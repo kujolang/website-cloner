@@ -11,7 +11,7 @@ Website Cloner turns a public WordPress site into an editable [Kujo SSG](https:/
 
 **AI is off by default.** You do not need an API key, AI Chat, Codex, or agent skills. Kujo runs as part of the build; it does not need a separate server.
 
-This is a local preview release. Some sites need repairs. A completed migration does not mean every quality check passed.
+This is a local preview release. See [versioned releases](https://github.com/kujolang/website-cloner/releases) and the [changelog](CHANGELOG.md) to track updates. Some sites need repairs. A completed migration does not mean every quality check passed.
 
 ## Install and open
 

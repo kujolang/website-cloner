@@ -30,7 +30,7 @@ Product catalogs contain snapshots, not live inventory. Checkout, accounts, memb
 
 GitHub Pages and Cloudflare Pages publishing use user-supplied API tokens; OAuth is not implemented. Automated provider fixtures pass, but live account acceptance remains separate. Deployment verification checks the uploaded version and homepage, not the whole site's design.
 
-The installer has a fresh macOS acceptance record. Linux desktop acceptance and a public download release remain unverified. See [installation verification](installer-verification.md).
+The installer has a fresh macOS acceptance record. Linux desktop acceptance remains unverified. Anonymous public source downloads have been checked. See [installation verification](installer-verification.md).
 
 ## Before offering a hosted service
 
