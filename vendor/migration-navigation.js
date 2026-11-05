@@ -3,8 +3,10 @@
  // Duda's desktop runtime imposes a 768px canvas even on narrow screens.
  // Scope the responsive fallback to its declared shell and gallery markup.
  if(document.querySelector('body.dmDesktopBody #dm .dmInner')){
+  const sizes=new Set([...document.querySelectorAll('[class]')].flatMap(el=>[...el.classList]).filter(c=>/^m-(?:font-)?size-\d{1,3}$/.test(c)));
+  const typography=[...sizes].map(c=>{const size=Number(c.split('-').at(-1));return size>=8&&size<=160?'body.dmDesktopBody #dm .'+c+'{font-size:'+size+'px!important}':'';}).join('');
   const style=document.createElement('style');style.textContent=`
-  @media(max-width:767px){body.dmDesktopBody #dm .dmInner{min-width:0!important;width:100%!important}
+  @media(max-width:767px){${typography}body.dmDesktopBody #dm .dmInner{min-width:0!important;width:100%!important}
   body.dmDesktopBody #dm .dmRespColsWrapper{display:flex;flex-wrap:wrap}
   body.dmDesktopBody #dm .dmRespCol.small-12{width:100%!important;max-width:100%!important;flex:0 0 100%;float:none!important}
   body.dmDesktopBody #hamburger-header-container,body.dmDesktopBody #hamburger-header{width:100%!important;max-width:100%!important}

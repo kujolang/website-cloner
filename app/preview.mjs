@@ -7,7 +7,7 @@ export function prefixPreview(html, id) {
   if (!/^[a-f0-9]{48}$/.test(id)) throw Error('Invalid preview ID');
   const prefix = `/${id}/`;
   const themed = html.replace(/<head\b[^>]*>/i, '$&' + previewScrollbarStyle);
-  return themed.replace(/\b(href|src|poster)="\/(?!\/)/g, `$1="${prefix}`)
+  return themed.replace(/url\(\s*(&quot;|["']?)\/(?!\/)/gi, (_,quote)=>'url('+quote+prefix).replace(/\b(href|src|poster)="\/(?!\/)/g, `$1="${prefix}`)
     .replace(/srcset="([^"]*)"/g, (_, values) => 'srcset="' + values.split(',').map(value => value.trim().replace(/^\/(?!\/)/, prefix)).join(', ') + '"');
 }
 

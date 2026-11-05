@@ -14,3 +14,7 @@ test('preview adds monochrome scrollbars without modifying the source HTML',()=>
  assert.ok(!source.includes('data-cloner-preview-scrollbars'));
  assert.match(themed,/<title>Site<\/title>/);
 });
+test('preview prefixes inline CSS backgrounds without rewriting remote assets',()=>{
+ const id='c'.repeat(48);const html=prefixPreview('<div style="background:url(&quot;/assets/media/a.jpg&quot;)"></div><style>.a{background:url(\'/assets/media/b.jpg\')}.b{background:url(https://example.org/a.jpg)}</style>',id);
+ assert.ok(html.includes('&quot;/'+id+'/assets/media/a.jpg'));assert.ok(html.includes("'/"+id+"/assets/media/b.jpg"));assert.ok(html.includes('url(https://example.org/a.jpg)'));
+});
