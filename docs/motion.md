@@ -17,7 +17,7 @@ The two custom adapters were reviewed against public homepage inline scripts cap
 - Hero: `b17a58ac09e2d57de20ed5dd79e1b38ff367be99792c951de36b2fd0d84deeb1`
 - Cards: `e2f77a2bf84c6248d124ddea7cb67ac43b5f92d1bc8ce099ebe9a072c6dfbc5d`
 
-The adapters are reviewed reconstructions, not copied executable code or a claim of identical timing. Hero playback remains a local poster; GSAP scrub smoothing, nested video scaling and image-swap details are simplified. The custom steps timeline, other custom scripts and external Lottie assets remain explicitly reported limitations. CSS-authored passive animation is retained as source styling; it is not automatically validated for behavioral equivalence.
+The adapters are reviewed reconstructions, not copied executable code or a claim of identical timing. Direct MP4 and WebM sources are downloaded through the checked asset pipeline and played locally. Muted Duda background videos retain looping inline playback; source controls are preserved on ordinary videos. Video URLs and posters are editable in component media frontmatter. Unavailable, oversized or unsupported video sources retain a poster and produce a warning. Authenticated streams, DRM and arbitrary player scripts are not reconstructed. GSAP scrub smoothing, nested video scaling and image-swap details remain simplified. The custom steps timeline, other custom scripts and external Lottie assets remain explicitly reported limitations. CSS-authored passive animation is retained as source styling; it is not automatically validated for behavioral equivalence.
 
 ## Trust and accessibility
 
