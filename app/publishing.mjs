@@ -57,7 +57,7 @@ export async function createPublishing({data,fetcher=fetch,build=prepareOutput,r
     else {
      await event('Uploading files to Cloudflare Pages');
      const uploadCwd=path.join(folder,'.upload-runner');await mkdir(uploadCwd);await writeFile(path.join(uploadCwd,'empty.env'),'');
-     await runner(process.execPath,[path.join(root,'node_modules/wrangler/bin/wrangler.js'),'--env-file',path.join(uploadCwd,'empty.env'),'pages','deploy',output,'--project-name',target.site,'--branch',target.branch,'--commit-hash',id,'--commit-message','Website Cloner '+id,'--commit-dirty=false'],{cwd:uploadCwd,env:{...cleanEnv(),HOME:uploadCwd,XDG_CONFIG_HOME:path.join(folder,'.config'),CLOUDFLARE_API_TOKEN:connection.token,CLOUDFLARE_ACCOUNT_ID:target.account,WRANGLER_SEND_METRICS:'false',WRANGLER_LOG_PATH:path.join(folder,'.wrangler-logs')}});
+     await runner(process.execPath,[path.join(root,'node_modules/wrangler/bin/wrangler.js'),'pages','deploy',output,'--project-name',target.site,'--branch',target.branch,'--commit-hash',id,'--commit-message','Website Cloner '+id,'--commit-dirty=false','--env-file='+path.join(uploadCwd,'empty.env')],{cwd:uploadCwd,env:{...cleanEnv(),HOME:uploadCwd,XDG_CONFIG_HOME:path.join(folder,'.config'),CLOUDFLARE_API_TOKEN:connection.token,CLOUDFLARE_ACCOUNT_ID:target.account,WRANGLER_SEND_METRICS:'false',WRANGLER_LOG_PATH:path.join(folder,'.wrangler-logs')}});
     }
     await event('Waiting for the provider to finish this deployment');
     for(let attempt=0;attempt<attempts;attempt++){
