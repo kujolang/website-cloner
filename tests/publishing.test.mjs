@@ -42,7 +42,7 @@ test('Cloudflare connection scopes, Direct Upload and exact commit verification 
  if(p.endsWith('/accounts'))data=[{id:account,name:'My account'}];
  else if(p.endsWith('/projects'))data=o.method==='POST'?{name:'new-site'}:[{name:'site'},{name:'git-site',source:{type:'github'}}];
  else if(p.endsWith('/projects/site'))data={name:'site',subdomain:'site.pages.dev',production_branch:'main'};
- else if(p.endsWith('/deployments'))data=[{id:'old',deployment_trigger:{metadata:{commit_hash:'old'}},latest_stage:{status:'success'}},{id:'exact',deployment_trigger:{metadata:{commit_hash:deploymentId}},latest_stage:{status:'success'}}];
+ else if(p.endsWith('/deployments')){assert.equal(new URL(url).searchParams.get('per_page'),'10');data=[{id:'old',deployment_trigger:{metadata:{commit_hash:'old'}},latest_stage:{status:'success'}},{id:'exact',deployment_trigger:{metadata:{commit_hash:deploymentId}},latest_stage:{status:'success'}}];}
  else throw Error(url);return response({success:true,result:data});};
  try{const service=await createPublishing({data:dir,fetcher,build:fakeBuild,runner:async(file,args,options)=>{received={file,args,options};deploymentId=args[args.indexOf('--commit-hash')+1];},verify:async()=>true,wait:async()=>{},attempts:2});
  await service.connect('cloudflare',token);assert.equal((await service.sites('cloudflare',account)).length,1);await assert.rejects(service.sites('cloudflare','f'.repeat(32)),/Select/);

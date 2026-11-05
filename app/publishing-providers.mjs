@@ -131,7 +131,7 @@ export async function providerReady(provider,connection,target,run,fetcher){
   if(build?.status==='errored')throw Error('GitHub Pages build failed. Check the repository Pages settings and build logs.');
   return build?.status==='built';
  }
- const deployments=await api(`/accounts/${target.account}/pages/projects/${segment(target.site)}/deployments?env=production&per_page=100`);
+ const deployments=await api(`/accounts/${target.account}/pages/projects/${segment(target.site)}/deployments?env=production&per_page=10`);
  const d=deployments.find(d=>d.deployment_trigger?.metadata?.commit_hash===run.id);
  if(d?.latest_stage?.status==='failure'||d?.latest_stage?.status==='canceled')throw Error('Cloudflare deployment failed. Check the project deployment logs.');
  if(d)run.providerDeploymentId=d.id;
