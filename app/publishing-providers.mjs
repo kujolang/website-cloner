@@ -45,7 +45,7 @@ export async function listSites(provider,connection,account,fetcher){
  const api=providerAPI(provider,connection.token,fetcher);
  if(provider==='github')return (await listAll(api,'/user/repos?affiliation=owner,collaborator,organization_member')).filter(r=>!r.archived&&r.permissions?.admin).map(r=>({id:r.full_name,name:r.full_name,private:r.private}));
  if(!connection.accounts.some(a=>a.id===account))throw Error('Select a connected Cloudflare account.');
- return (await listAll(api,`/accounts/${account}/pages/projects`)).filter(p=>!p.source).map(p=>({id:p.name,name:p.name}));
+ return (await listAll(api,`/accounts/${account}/pages/projects`,10)).filter(p=>!p.source).map(p=>({id:p.name,name:p.name}));
 }
 export async function createSite(provider,connection,input,fetcher){
  const name=siteName(input.name,provider),api=providerAPI(provider,connection.token,fetcher);

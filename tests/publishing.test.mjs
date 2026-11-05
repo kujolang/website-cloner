@@ -91,3 +91,8 @@ test('pending GitHub Pages certificates target HTTPS without weakening live veri
   await assert.rejects(destination('github',{token},{site:'person/site'},async(url,o)=>url.endsWith('/pages')?response({html_url}):mock.fetcher(url,o)),/Invalid Pages URL/);
  }
 });
+
+test('Cloudflare project listing stays within supported page sizes and follows pagination',async()=>{
+ const calls=[];const sites=await listSites('cloudflare',{token,accounts:[{id:account}]},account,async url=>{const u=new URL(url);calls.push(u);assert.equal(u.searchParams.get('per_page'),'10');const page=Number(u.searchParams.get('page'));return response({success:true,result:[{name:'site-'+page}],result_info:{page,per_page:1,total_count:2,total_pages:2}});});
+ assert.equal(calls.length,2);assert.deepEqual(sites.map(x=>x.name),['site-1','site-2']);
+});
