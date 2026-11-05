@@ -63,7 +63,11 @@ export async function destination(provider,connection,input,fetcher){
   if(repo.default_branch===pagesBranch)throw Error('Choose a repository whose default branch is not website-cloner-pages.');
   let pages=null;try{pages=await api(`/repos/${input.site}/pages`);}catch(e){if(e.statusCode!==404)throw e;}
   const url=pages?.html_url||`https://${repo.owner.login}.github.io/${repo.name.toLowerCase()===`${repo.owner.login.toLowerCase()}.github.io`?'':repo.name+'/'} `;
-  const parsed=new URL(url.trim());if(parsed.protocol!=='https:'||parsed.username||parsed.password)throw Error('Invalid Pages URL');
+  const parsed=new URL(url.trim());
+  // GitHub reports HTTP while a new Pages certificate is provisioning.
+  // Build for HTTPS; live verification must still pass with a valid certificate.
+  if(parsed.protocol==='http:')parsed.protocol='https:';
+  if(parsed.protocol!=='https:'||parsed.username||parsed.password)throw Error('Invalid Pages URL');
   return {site:repo.full_name,url:parsed.href,basePath:parsed.pathname.replace(/\/$/,''),pagesExists:Boolean(pages),branch:pagesBranch,defaultBranch:repo.default_branch};
  }
  if(!connection.accounts.some(a=>a.id===input.account))throw Error('Select a connected Cloudflare account.');

@@ -81,3 +81,13 @@ test('Cloudflare account enumeration obeys its 50-row limit and follows returned
  const identity=await connectAccount('cloudflare',token,async url=>{const u=new URL(url);calls.push(u);assert.equal(u.searchParams.get('per_page'),'50');const page=Number(u.searchParams.get('page'));return response({success:true,result:[{id:String(page).padStart(32,'0'),name:'Account '+page}],result_info:{page,per_page:1,total_count:2,total_pages:2}});});
  assert.equal(calls.length,2);assert.equal(identity.accounts.length,2);
 });
+
+test('pending GitHub Pages certificates target HTTPS without weakening live verification',async()=>{
+ const mock=githubMock();
+ const fetcher=async(url,o)=>url.endsWith('/pages')?response({html_url:'http://demo.example.com/'}):mock.fetcher(url,o);
+ const target=await destination('github',{token},{site:'person/site'},fetcher);
+ assert.equal(target.url,'https://demo.example.com/');assert.equal(target.basePath,'');
+ for(const html_url of ['ftp://demo.example.com/','http://user:password@demo.example.com/']){
+  await assert.rejects(destination('github',{token},{site:'person/site'},async(url,o)=>url.endsWith('/pages')?response({html_url}):mock.fetcher(url,o)),/Invalid Pages URL/);
+ }
+});
