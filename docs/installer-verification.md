@@ -2,7 +2,7 @@
 
 [Documentation index](README.md)
 
-The isolated macOS installation test passed after disk space was freed. It used an empty HOME and installation directory, system-only PATH, real dependency downloads and a private Chromium browser. Linux desktop acceptance remains pending.json).
+The isolated macOS installation test passed after disk space was freed. It used an empty HOME and installation directory, system-only PATH, real dependency downloads and a private Chromium browser. Linux desktop acceptance remains pending.
 
 ## Passed
 
@@ -27,4 +27,4 @@ Restart and stop passed. Reinstallation retained `.env` and the exact SHA-256 of
 ## Still unverified
 
 - A supported Debian/Ubuntu desktop installation, including administrator-assisted system libraries.
-- Public remote source download: the GitHub repository remains private and requires an owner visibility/release action. No release or visibility changes were made.
+- A complete fresh installation from the public download on another clean machine. The isolated macOS test above used the local source.

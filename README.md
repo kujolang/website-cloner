@@ -19,7 +19,7 @@ This is a local preview release. Some sites need repairs. A completed migration 
 2. Let setup finish. It installs Node when needed, Kujo, app dependencies and a browser, then opens the app.
 3. Paste a website URL and select **CLONE**. Leave **Preserve Source Without AI** selected for a run with no model calls.
 
-The repository is currently private, so you need access to download it. After it becomes public, this command will also work:
+Download the [source ZIP](https://github.com/kujolang/website-cloner/archive/refs/heads/main.zip), or install from Terminal without Git:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/kujolang/website-cloner/main/install.sh | bash
