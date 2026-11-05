@@ -35,7 +35,7 @@ test('embedded TrueType MIME aliases localize as fonts',async()=>{
 test('cached presentation upgrades recover stripped colour variables from saved HTML',async()=>{
  const {restorePresentation}=await import('../engine/presentation.mjs');const html='<html><body><main><p id="body"><span style="color:var(--color_1)">White text</span></p></main></body></html>';
  const page=extract(html,'https://example.com/');page.content=page.content.replace(' style="color:var(--color_1)"','');page.presentationVersion=4;
- assert.ok(restorePresentation(page,html)>0);assert.match(page.content,/color:var\(--color_1\)/);assert.equal(extract(html,'https://example.com/').presentationVersion,42);
+ assert.ok(restorePresentation(page,html)>0);assert.match(page.content,/color:var\(--color_1\)/);assert.equal(extract(html,'https://example.com/').presentationVersion,44);
 });
 
 test('saved HTML parser upgrades rebuild lazy presentation using existing assets',async()=>{

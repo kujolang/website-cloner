@@ -282,7 +282,7 @@ const server = http.createServer(async (req, res) => {
       });
     res.setHeader(
       "Content-Security-Policy",
-      `default-src 'self'; script-src 'self'; style-src 'self'; frame-src http://127.0.0.1:${previewPort}; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'`,
+      `default-src 'self'; script-src 'self'; style-src 'self'; frame-src http://127.0.0.1:${previewPort}; img-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'`,
     );
     return fileResponse(
       res,
@@ -314,7 +314,7 @@ const preview = http.createServer(async (req, res) => {
       html = prefixPreview(html, m[1]);
       res.writeHead(200, {
         "content-type": "text/html",
-        "content-security-policy": `default-src 'none'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; ${previewScriptCSP} sandbox allow-same-origin allow-scripts; frame-ancestors ${origin}; form-action 'none'; base-uri 'none'`,
+        "content-security-policy": `default-src 'none'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; media-src 'self'; font-src 'self'; ${previewScriptCSP} sandbox allow-same-origin allow-scripts; frame-ancestors ${origin}; form-action 'none'; base-uri 'none'`,
         "x-robots-tag": "noindex, nofollow",
       });
       return res.end(html);

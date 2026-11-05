@@ -4,6 +4,7 @@ import { realpath, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 export const mime = {
+  ".mp4":"video/mp4", ".webm":"video/webm",
   ".ics": "text/calendar; charset=utf-8",
   ".pdf": "application/pdf",
   ".html": "text/html",
@@ -62,7 +63,7 @@ export async function fileResponse(
     if (preview) {
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'none'; img-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'self' http://127.0.0.1:4310; form-action 'none'; base-uri 'none'; sandbox allow-same-origin",
+        "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'self' http://127.0.0.1:4310; form-action 'none'; base-uri 'none'; sandbox allow-same-origin",
       );
       res.setHeader("X-Robots-Tag", "noindex, nofollow");
     }

@@ -14185,14 +14185,16 @@ function renderProductResultCount($, { total, page, size }) {
 // scripts/component-media.mjs
 function validate(attr2, value) {
   if (!["string", "number"].includes(typeof value) || typeof value === "number" && !Number.isFinite(value)) throw Error("Invalid component media field " + attr2);
-  if (["src", "srcset"].includes(attr2) && /(?:^|[\s,])(?:javascript|vbscript|file):/i.test(String(value))) throw Error("Unsafe component media URL");
+  if (["src", "srcset", "poster"].includes(attr2) && /(?:^|[\s,])(?:javascript|vbscript|file):/i.test(String(value))) throw Error("Unsafe component media URL");
 }
+var videoAttributes = ["src", "poster", "width", "height", "preload"];
 var imageAttributes = ["src", "alt", "srcset", "sizes", "width", "height"];
-var sourceAttributes = ["srcset", "sizes", "media", "type", "width", "height"];
+var sourceAttributes = ["src", "srcset", "sizes", "media", "type", "width", "height"];
 function captureComponentMedia(html3) {
   const $ = load(html3, null, false);
-  if ($.root().children().length !== 1 || !$.root().children().is("picture") || $("img").length !== 1) return null;
-  const data2 = { image: {}, sources: [] };
+  const video = $.root().children().is("video");
+  if ($.root().children().length !== 1 || !video && (!$.root().children().is("picture") || $("img").length !== 1)) return null;
+  const data2 = video ? { video: {}, sources: [] } : { image: {}, sources: [] };
   const bind = (el, attrs, record, prefix) => {
     for (const attr2 of attrs) {
       const value = el.attr(attr2);
@@ -14201,7 +14203,8 @@ function captureComponentMedia(html3) {
       el.attr(attr2, "MIGRATION_MEDIA_" + prefix + "_" + attr2 + "_END");
     }
   };
-  bind($("img"), imageAttributes, data2.image, "image");
+  if (video) bind($("video"), videoAttributes, data2.video, "video");
+  else bind($("img"), imageAttributes, data2.image, "image");
   $("source").each((i, node) => {
     const record = {};
     data2.sources.push(record);
@@ -14215,9 +14218,9 @@ function renderComponentMedia(html3, data2) {
   const $ = load(html3, null, false);
   $("*").each((_, node) => {
     for (const [attr2, text3] of Object.entries(node.attribs || {})) {
-      const match = /^MIGRATION_MEDIA_(image|source\d+)_([a-z]+)_END$/.exec(text3);
+      const match = /^MIGRATION_MEDIA_(image|video|source\d+)_([a-z]+)_END$/.exec(text3);
       if (!match) continue;
-      const record = match[1] === "image" ? data2.image : data2.sources?.[Number(match[1].slice(6))], value = record?.[match[2]];
+      const record = match[1] === "image" ? data2.image : match[1] === "video" ? data2.video : data2.sources?.[Number(match[1].slice(6))], value = record?.[match[2]];
       if (value === void 0) throw Error("Missing component media field " + match[1] + "." + match[2]);
       validate(attr2, value);
       $(node).attr(attr2, String(value));
@@ -14231,6 +14234,7 @@ function renderComponentMedia(html3, data2) {
     }
   };
   apply($("img"), data2.image, imageAttributes);
+  apply($("video"), data2.video, videoAttributes);
   $("source").each((i, node) => apply($(node), data2.sources?.[i], sourceAttributes));
   return $.html();
 }
@@ -15007,6 +15011,13 @@ async function prepareMarkdownSources(project) {
         if (el.length) {
           for (const [key, value] of Object.entries(d.attrs)) el.attr(key, value);
           if (d.removeHref) el.removeAttr("href");
+          if (d.wrapContents) {
+            for (const attrs of [...d.wrapContents].reverse()) {
+              const wrapper = $("<span></span>").attr(attrs);
+              wrapper.append(el.contents());
+              el.append(wrapper);
+            }
+          }
           if (d.wrapFigure) {
             const wrapper = $("<figure></figure>").attr(d.wrapFigure), target = el.parent().is("a") ? el.parent() : el, parent2 = target.parent();
             if (parent2.is("p") && parent2.contents().filter((_, n) => n.type !== "text" || n.data.trim()).length === 1) {

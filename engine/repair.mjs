@@ -1,3 +1,4 @@
+import {load} from 'cheerio/slim';
 import {htmlMetadata,documentTypes} from './html-metadata.mjs';
 import path from 'node:path';
 import {stat,readFile,writeFile,mkdir} from 'node:fs/promises';
@@ -31,7 +32,7 @@ export async function repairSavedModel(model,dir,network,event=()=>{},{retryAsse
   if(saved&&original.sourceHTML){const url=original.documentURL||original.url;saved.documentAttributes=documentAttributes(original.sourceHTML);saved.htmlMetadata={...(original.htmlMetadata||htmlMetadata(original.sourceHTML,url)),documentTypes:documentTypes(original.sourceHTML,url)};}
   if(index%25===0){event('Inspecting cached content types',{pages:index+1,total:captured.pages.length});await new Promise(resolve=>setImmediate(resolve));}
  }
- const originals=new Map(captured.pages.filter(p=>{const saved=savedPages.get(p.route);return saved&&(!saved.sourceHTML||saved.assetFailures?.length||missingCached.length);}).map(p=>[p.route,(savedPages.get(p.route)?.assetFailures?.length||missingCached.length)?p:{route:p.route,sourceHTML:p.sourceHTML}]));
+ const originals=new Map(captured.pages.filter(p=>{const saved=savedPages.get(p.route);return saved&&(!saved.sourceHTML||(saved.assetFailures?.length||saved.videoFailures?.length)||missingCached.length);}).map(p=>[p.route,((savedPages.get(p.route)?.assetFailures?.length||savedPages.get(p.route)?.videoFailures?.length)||missingCached.length)?p:{route:p.route,sourceHTML:p.sourceHTML}]));
  captured.pages=[];
  const repairPages=[],replacements=new Map(),redirects=[];
  let lastProgress=0;
@@ -55,7 +56,7 @@ export async function repairSavedModel(model,dir,network,event=()=>{},{retryAsse
     redirects.push({route:page.route,target:page.canonical,evidence:'saved-external-canonical',liveVerified:false});
     continue;
   }
-  if((retryAssets&&page.assetFailures?.length)||missingCached.some(asset=>[page.content,page.header,page.footer,page.shell,...(page.styles||[])].some(fragment=>fragment?.includes(path.basename(asset.path))))){const original=originals.get(page.route);if(original){original.cachedStyles=Object.fromEntries((page.styleSources||[]).map((entry,i)=>[JSON.stringify(entry),page.styles?.[i]]).filter(([,value])=>value));original.styleSources=page.styleSources;repairPages.push(original);receipt.pagesRetried.push(page.route);}}
+  if((retryAssets&&(page.assetFailures?.length||page.videoFailures?.length))||missingCached.some(asset=>[page.content,page.header,page.footer,page.shell,...(page.styles||[])].some(fragment=>fragment?.includes(path.basename(asset.path))))){const original=originals.get(page.route);if(original){original.cachedStyles=Object.fromEntries((page.styleSources||[]).map((entry,i)=>[JSON.stringify(entry),page.styles?.[i]]).filter(([,value])=>value));original.styleSources=page.styleSources;repairPages.push(original);receipt.pagesRetried.push(page.route);}}
  }
  const subset={...model,pages:repairPages};
  if(repairPages.length){event('Repairing missing assets from saved captures', {pages:repairPages.length});await localize(subset,network,path.join(dir,'project/assets/media'),{onCheckpoint:async(media,progress)=>{await writeJSON(path.join(dir,'asset-cache.json'),{media,progress});if(Date.now()-lastProgress>10000){lastProgress=Date.now();event(`Repairing saved assets: ${progress.completedPages}/${progress.totalPages} affected pages; ${media.length} assets saved`);}}});for(const page of repairPages)replacements.set(page.route,page);}
@@ -63,14 +64,14 @@ export async function repairSavedModel(model,dir,network,event=()=>{},{retryAsse
  model.pages=model.pages.map(p=>replacements.get(p.route)||p);
  // Upgrade sanitized checkpoints from saved HTML; reuse known CSS and fetch only newly discovered deferred styles.
  const presentationDir=path.join(dir,'source-html');await mkdir(presentationDir,{recursive:true});
- const upgrades=model.pages.filter(p=>p.presentationVersion!==42);
+ const upgrades=model.pages.filter(p=>p.presentationVersion!==44);
  receipt.presentation={pages:upgrades.length,restored:0,failures:[]};let next=0,done=0;
  await Promise.all(Array.from({length:Math.min(1,upgrades.length)},async()=>{
   while(next<upgrades.length){const page=upgrades[next++],file=path.join(presentationDir,hash(page.url)+'.html');
    try{let html=page.sourceHTML||originals.get(page.route)?.sourceHTML;
     if(!html)try{html=await readFile(file,'utf8');}catch(error){if(error.code!=='ENOENT')throw error;}
     if(!html){const response=await network.get(page.documentURL||page.url);if(response.status!==200)throw Error('HTTP '+response.status);html=response.body.toString();if(!/<html|<body/i.test(html))throw Error('Not HTML');await writeFile(file,html);}
-    receipt.presentation.restored+=refreshPresentation(page,html);page.presentationVersion=42;
+    receipt.presentation.restored+=refreshPresentation(page,html);page.presentationVersion=44;
     // Raw HTML remains in captured-model.json; do not duplicate it in prepared/export models.
     delete page.sourceHTML;
    }catch(error){receipt.presentation.failures.push({route:page.route,error:error.message});}
@@ -141,6 +142,13 @@ export async function repairSavedModel(model,dir,network,event=()=>{},{retryAsse
  model.metrics.assetsLocalized=model.media.length;
  model.metrics.missingImages=model.pages.reduce((n,p)=>n+(p.assetFailures?.length||0),0);
  for(const failure of receipt.presentation.failures){const warning='Presentation recovery '+failure.route+': '+failure.error;if(!model.warnings.includes(warning))model.warnings.push(warning);}
+ for(const page of model.pages){
+  const $=load([page.content,page.header,page.footer,page.shell].filter(Boolean).join(''),null,false),videos=$('video');
+  if(videos.length&&videos.toArray().every(el=>/^\/assets\/media\/[^/]+\.(mp4|webm)$/.test($(el).attr('src')||'')||$(el).find('source[src^="/assets/media/"]').length)){
+   page.dynamic=(page.dynamic||[]).filter(x=>x!=='Video playback omitted; available poster images retained'&&x!=='Video has no portable source; poster retained');
+   model.warnings=model.warnings.filter(x=>x!=='Video source unavailable on '+page.route+'; poster retained');
+  }
+ }
  receipt.cacheMisses=[...cacheMisses];
  receipt.assetsAdded=model.media.length-receipt.savedAssets;
  receipt.remainingImageReferences=model.metrics.missingImages;

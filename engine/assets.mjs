@@ -64,6 +64,7 @@ export async function localize(model, network, dir, { stylesOnly = false, linksO
       let type = String(r.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
       const exts = {
         "application/pdf": "pdf",
+        "video/mp4":"mp4", "video/webm":"webm",
         "image/svg+xml": "svg",
         "image/png": "png",
         "image/jpeg": "jpg",
@@ -99,8 +100,11 @@ export async function localize(model, network, dir, { stylesOnly = false, linksO
         if(['png','jpg','gif','webp','avif','svg'].includes(inferred))type='image/'+(inferred==='jpg'?'jpeg':inferred==='svg'?'svg+xml':inferred);
         type=signature==='wOF2'?'font/woff2':signature==='wOFF'?'font/woff':signature==='OTTO'?'font/otf':r.body.subarray(0,4).equals(Buffer.from([0,1,0,0]))?'font/ttf':type;
       }
+      if(["application/octet-stream","binary/octet-stream"].includes(type)&&r.body.toString("ascii",4,8)==="ftyp")type="video/mp4";
       let ext = exts[type];
       if (!ext) throw Error(`Unsupported media ${type}`);
+      if(ext==="mp4"&&r.body.toString("ascii",4,8)!=="ftyp")throw Error("Invalid MP4 signature");
+      if(ext==="webm"&&!r.body.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3])))throw Error("Invalid WebM signature");
       if(ext === "pdf" && !r.body.subarray(0,1024).includes(Buffer.from("%PDF-")))throw Error("Invalid PDF signature");
       if (ext === "svg") r.body = Buffer.from(sanitizeSvg(r.body.toString()));
       const originalBytes = r.body.length;
@@ -241,7 +245,7 @@ export async function localize(model, network, dir, { stylesOnly = false, linksO
       }));
       if(failure)throw failure;
     }
-    if (!stylesOnly && !linksOnly) p.assetFailures = [];
+    if (!stylesOnly && !linksOnly) {p.assetFailures = [];p.videoFailures=[];}
     if (!stylesOnly && !linksOnly && p.faviconSource) { try { p.favicon=await asset(new URL(p.faviconSource,p.documentURL||p.url).href); } catch(error){if(recoverable(error))throw error;} }
     if (!stylesOnly && !linksOnly && p.wordpress?.featuredImage) p.featuredImage = await asset(p.wordpress.featuredImage);
     for (const part of (stylesOnly ? [] : ["content", "header", "footer", ...(p.shell ? ["shell"] : [])])) {
@@ -298,7 +302,12 @@ export async function localize(model, network, dir, { stylesOnly = false, linksO
         if (poster?.startsWith("/assets/media/")) local = poster.slice(1);
         else if (poster) { try { local = await asset(new URL(poster, p.documentURL||p.url).href); } catch (error) { if (recoverable(error)) throw error; } }
         $(e).removeAttr("poster");
-        $(e).find("source").remove();
+        for(const media of [e,...$(e).find("source[src]").toArray()]){
+          const node=$(media),src=node.attr('src');node.removeAttr('src');if(!src)continue;
+          try{const file=await asset(new URL(src,p.documentURL||p.url).href);if(file&&/\.(mp4|webm)$/.test(file))node.attr('src','/'+file);else (p.videoFailures||=[]).push(src);}catch(error){if(recoverable(error))throw error;}
+        }
+        if($(e).is('.videobgframe')&&$(e).attr('muted')!==undefined)$(e).attr('autoplay','').attr('loop','').attr('playsinline','');
+        if(!$(e).attr('src')&&!$(e).find('source[src]').length)model.warnings.push('Video source unavailable on '+p.route+'; poster retained');
         if (local) $(e).attr("poster", "/" + local);
       }
       p[part] = $.html();

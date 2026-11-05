@@ -1,3 +1,4 @@
+import {extractProsePresentation} from './prose-presentation.mjs';
 import {bindRelationshipLists} from './relationship-lists.mjs';
 import {bindRelationshipLinks} from './custom-relationships.mjs';
 import {captureSliderSequences} from '../scripts/slider-authoring.mjs';
@@ -131,6 +132,7 @@ export async function writeEditableProject(model,project){
     if(el.prev?.type==='text')el.prev.data=el.prev.data.replace(/\s+$/,space);
     if(el.next?.type==='text')el.next.data=el.next.data.replace(/^\s+/,space);
    });
+   const presentation=extractProsePresentation(prose);
    const md=markdown.turndown(prose.html()).replaceAll(space,' ').trim();
    if(!md)return null;
    const d=load(source,null,false),attrs=[];
@@ -145,7 +147,7 @@ export async function writeEditableProject(model,project){
    const heading=d('h1,h2,h3,h4,h5,h6').first().text().trim(),image=d('img').first();
    const label=heading||(image.length&&!d.root().text().trim()?'image '+(image.attr('alt')||''):d.root().text().trim().split(/\s+/).slice(0,7).join(' '));
    const name=sectionName(label,sectionNames);
-   decorations[key]=attrs;slots.push({key,name,markdown:md,inline,prefix,suffix,textHash:hash(d.root().text().replace(/\s+/g,' ').trim())});return 'MIGRATION_SLOT_'+key+'_END';
+   decorations[key]=[...attrs,...presentation];slots.push({key,name,markdown:md,inline,prefix,suffix,textHash:hash(d.root().text().replace(/\s+/g,' ').trim())});return 'MIGRATION_SLOT_'+key+'_END';
   }
   function utility(node){return Boolean(contentTitle&&node===primaryHeading[0])||$(node).is('nav,aside,[role="navigation"],[role="menu"],[role="menubar"],.ns-buttons,.sharedaddy,.sd-sharing,.wp-block-social-links');}
   function walk(parent){

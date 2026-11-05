@@ -67,7 +67,7 @@ export function clean(html, { forms = false } = {}) {
       img: ["src", "alt", "width", "height", "loading", "srcset", "sizes"],
       source: ["src", "srcset", "type", "media", "sizes"],
       time: ["datetime"],
-      video: ["poster", "width", "height", "playsinline", "muted", "preload"],
+      video: ["src", "controls", "autoplay", "loop", "poster", "width", "height", "playsinline", "muted", "preload"],
       button: ["type", "disabled"],
       form: [],
       fieldset: ["disabled"],
@@ -185,7 +185,7 @@ export function extract(html, url, rest) {
   const dynamic = [...new Set([...componentWarnings,...motion.unsupported.map(x => `Motion: ${x.replace(/ \(SHA256 [a-f0-9]+\)/g, "")}`)])];
   for (const [selector, label] of [
 
-    ["video", "Video playback omitted; available poster images retained"],
+    ["video:not([src]):not(:has(source[src]))", "Video has no portable source; poster retained"],
     [
       "[class*=woocommerce],a[href*=checkout],a[href*=cart]",
       "Commerce needs a replacement",
@@ -281,7 +281,7 @@ export function extract(html, url, rest) {
     clean(main.clone().empty().prop("outerHTML") || "<main></main>"),
   );
   return {
-    presentationVersion: 42,
+    presentationVersion: 44,
     sourceSEO,
     sourceForms,
     documentAttributes: documentAttributes(html),
