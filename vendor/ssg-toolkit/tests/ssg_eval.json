@@ -1,0 +1,27 @@
+{
+  "name": "ssg-launch-readiness",
+  "version": "1.0.0",
+  "tests": [
+    {
+      "name": "Builder help succeeds",
+      "check": "command_succeeds",
+      "params": {
+        "command": "cd /Users/robertdevore/2026/Kujolang/kujo-repos/ssg && kujo run ./build.kujo -- --help"
+      }
+    },
+    {
+      "name": "Generated output validates",
+      "check": "command_succeeds",
+      "params": {
+        "command": "cd /Users/robertdevore/2026/Kujolang/kujo-repos/ssg && bash scripts/validate-generated-output.sh output"
+      }
+    },
+    {
+      "name": "Docs contract tests pass",
+      "check": "command_succeeds",
+      "params": {
+        "command": "cd /Users/robertdevore/2026/Kujolang/kujo-repos/ssg && bash scripts/test-docs-contract.sh"
+      }
+    }
+  ]
+}

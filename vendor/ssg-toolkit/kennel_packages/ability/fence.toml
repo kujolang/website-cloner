@@ -1,0 +1,51 @@
+version = 1
+source_roots = ["src"]
+default_severity = "error"
+fail_on = "error"
+unknown_dependency_policy = "deny"
+
+[scan]
+include = ["ability.kujo", "src/**/*.kujo"]
+exclude = ["dist/**", "build/**", "kennel_packages/**", ".git/**"]
+
+[zones.public]
+paths = ["ability.kujo", "src/index.kujo"]
+can_depend_on = ["definition", "execution_contracts", "registry", "runtime"]
+cannot_depend_on = []
+external_allow = []
+severity = "error"
+
+[zones.definition]
+paths = ["src/contract.kujo"]
+can_depend_on = ["internal"]
+cannot_depend_on = ["execution_contracts", "registry", "runtime", "public"]
+external_allow = []
+severity = "error"
+
+[zones.execution_contracts]
+paths = ["src/contracts.kujo"]
+can_depend_on = ["definition", "internal"]
+cannot_depend_on = ["registry", "runtime", "public"]
+external_allow = []
+severity = "error"
+
+[zones.registry]
+paths = ["src/registry.kujo"]
+can_depend_on = ["definition", "execution_contracts", "internal"]
+cannot_depend_on = ["runtime", "public"]
+external_allow = []
+severity = "error"
+
+[zones.runtime]
+paths = ["src/runtime.kujo"]
+can_depend_on = ["definition", "execution_contracts", "registry", "internal"]
+cannot_depend_on = ["public"]
+external_allow = []
+severity = "error"
+
+[zones.internal]
+paths = ["src/internal.kujo"]
+can_depend_on = []
+cannot_depend_on = []
+external_allow = []
+severity = "error"

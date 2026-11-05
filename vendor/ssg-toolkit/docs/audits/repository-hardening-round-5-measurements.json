@@ -1,0 +1,92 @@
+{
+  "runtime": "Kujo 1.5.0, ordinary VM; Python 3.10; macOS",
+  "inspection_fixture": {
+    "binary_assets": 4,
+    "bytes_per_binary": 67108864,
+    "html": "<title>Benchmark</title>",
+    "samples": 5,
+    "hash_accounting": "sum stat sizes of calls to hash_file during one additional output_inspect"
+  },
+  "inspection_before": {
+    "seconds": [
+      1.219141623005271,
+      1.2461477619945072,
+      1.2373981880082283,
+      1.417112299008295,
+      1.1415497119887732
+    ],
+    "median_seconds": 1.2373981880082283,
+    "hashed_bytes": 268435480,
+    "files": 5
+  },
+  "inspection_after": {
+    "seconds": [
+      0.0007612670015078038,
+      0.0007097930065356195,
+      0.0005710059776902199,
+      0.000551064993487671,
+      0.0006584289949387312
+    ],
+    "median_seconds": 0.0006584289949387312,
+    "hashed_bytes": 0,
+    "files": 5
+  },
+  "build": {
+    "baseline": {
+      "seconds": [
+        91.04205946801812
+      ],
+      "files": 36,
+      "bytes": 168821,
+      "command": [
+        "kujo",
+        "run",
+        "/Users/robertdevore/2026/Kujolang/kujo-repos/ssg/build.kujo",
+        "--",
+        "--content",
+        "/Users/robertdevore/2026/Kujolang/kujo-repos/ssg/tmp/hardening-20261010/build-benchmark/content",
+        "--templates",
+        "/Users/robertdevore/2026/Kujolang/kujo-repos/ssg/templates",
+        "--assets",
+        "missing-assets",
+        "--output",
+        "/Users/robertdevore/2026/Kujolang/kujo-repos/ssg/tmp/hardening-20261010/build-benchmark/baseline",
+        "--site-url",
+        "https://benchmark.example.test",
+        "--posts-per-page",
+        "25"
+      ]
+    },
+    "candidate": {
+      "seconds": [
+        87.8758152469818
+      ],
+      "files": 36,
+      "bytes": 168821,
+      "command": [
+        "kujo",
+        "run",
+        "/Users/robertdevore/2026/Kujolang/kujo-repos/ssg/tmp/hardening-20261010/candidate/build.kujo",
+        "--",
+        "--content",
+        "/Users/robertdevore/2026/Kujolang/kujo-repos/ssg/tmp/hardening-20261010/build-benchmark/content",
+        "--templates",
+        "/Users/robertdevore/2026/Kujolang/kujo-repos/ssg/templates",
+        "--assets",
+        "missing-assets",
+        "--output",
+        "/Users/robertdevore/2026/Kujolang/kujo-repos/ssg/tmp/hardening-20261010/build-benchmark/candidate",
+        "--site-url",
+        "https://benchmark.example.test",
+        "--posts-per-page",
+        "25"
+      ]
+    },
+    "identical": true
+  },
+  "limitations": [
+    "Warm synthetic inspection fixture; no extrapolation to general site builds.",
+    "Build sample count one per variant; concurrent verification workload; no throughput claim.",
+    "100-post exploratory baseline aborted after more than six minutes, excluded from timings."
+  ]
+}

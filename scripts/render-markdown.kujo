@@ -1,0 +1,6 @@
+records := parse_json(read_file(".markdown-input.json"))
+result := {}
+for record in records {
+ result[record["id"]] = render_markdown(record["body"])
+}
+write_file(".markdown-output.json", to_json(result), true)

@@ -1,0 +1,1034 @@
+const MANIFEST_NAME := ".docgen-ssg-manifest.json"
+const MANIFEST_SCHEMA := "docgen-ssg-manifest/v1"
+const DOCGEN_SUMMARY_SCHEMA := "docgen-summary/v1"
+const MAX_KUJO_READ_FILE_BYTES := 8388608
+
+func usage() {
+	print("Usage: kujo run scripts/docgen_ssg_bridge.kujo -- [options]")
+	print("")
+	print("Required unless --docgen-payload is set:")
+	print("  --target-repo <path>")
+	print("")
+	print("Options:")
+	print("  --ssg-root <path>                 SSG site root (default: current directory)")
+	print("  --content-out <path>              Generated Markdown root (default: <content>/reference when building)")
+	print("  --docgen-out <path>               DocGen output root (default: .docgen/output)")
+	print("  --cache-dir <path>                DocGen cache root (default: .docgen/cache)")
+	print("  --site-url <url>                  SSG build URL (default: https://example.com)")
+	print("  --source-link-template <template> Source links with {path} and {line}")
+	print("  --kujo-bin <path>                 Kujo binary (default: KUJO_BIN or kujo)")
+	print("  --docgen-payload <path>           Existing kujo docgen --json payload")
+	print("  --project-json <path>             Existing docgen.json path")
+	print("  --gaps-json <path>                Existing docgen-gaps.json path")
+	print("  --languages <csv>                 DocGen language filter")
+	print("  --include-private                 Include private/internal symbols")
+	print("  --include-builtins                Include builtin/native API reference")
+	print("  --strict                          Fail on DocGen gates and undocumented docs")
+	print("  --allow-undocumented              Do not add --fail-on-undocumented in strict mode")
+	print("  --max-undocumented <n>            Documentation gap threshold")
+	print("  --max-broken-links <n>            Broken link threshold (default: 0)")
+	print("  --max-warnings <n>                Warning threshold (default: 0)")
+	print("  --max-discovery-skips <n>         Per-counter skip threshold (default: 0)")
+	print("  --allow-adapter-low-yield         Permit DOCGEN_ADAPTER_LOW_YIELD")
+	print("  --skip-build                      Generate Markdown only")
+	print("  --skip-validation                 Skip SSG validation and repository checks")
+	print("  --repository-check-timeout <s>    CI budget, 1-86400 seconds (default: 3600)")
+	print("  --skip-repository-checks          Validate the site without running repository CI")
+	print("  --output <path>                   Override configured build output")
+	print("  --dry-run                         Render existing --docgen-payload in memory only")
+}
+
+func fail(message) {
+	print("ERROR: " + message)
+	exit(1)
+}
+
+func flag_present(cli_args, name) {
+	i := 0
+	loop {
+		if i >= len(cli_args) { break }
+		if cli_args[i] == name { return true }
+		i = i + 1
+	}
+	return false
+}
+
+func option_value(cli_args, name, fallback) {
+	i := 0
+	loop {
+		if i >= len(cli_args) { break }
+		if cli_args[i] == name {
+			if i + 1 >= len(cli_args) {
+				fail("Missing value for " + name)
+			}
+			return cli_args[i + 1]
+		}
+		i = i + 1
+	}
+	return fallback
+}
+
+func int_option(cli_args, name, fallback) {
+	raw := option_value(cli_args, name, "")
+	if len(raw) == 0 {
+		return fallback
+	}
+	return parse_int(raw)
+}
+
+func repository_check_timeout(cli_args) {
+	raw := option_value(cli_args, "--repository-check-timeout", "3600")
+	if len(raw) == 0 || len(raw) > 5 || regex_replace(raw, "[0-9]", "") != "" {
+		fail("--repository-check-timeout must be an integer from 1 to 86400 seconds")
+	}
+	seconds := parse_int(raw)
+	if seconds < 1 || seconds > 86400 {
+		fail("--repository-check-timeout must be an integer from 1 to 86400 seconds")
+	}
+	return seconds * 1000
+}
+
+func run_repository_checks(config, ssg_root, docgen_out) {
+	# CI is a multi-command gate, not one bounded build. Keep its budget separate
+	# and spool complete evidence instead of retaining all logs in memory.
+	log_dir := under_root(ssg_root, path_join(docgen_out, "ci-" + uuid_v4()), "CI logs")
+	ensure_dir(log_dir)
+	stdout_path := path_join(log_dir, "stdout.log")
+	stderr_path := path_join(log_dir, "stderr.log")
+	print("Repository checks: logs in " + log_dir)
+	result := spawn_process(["bash", "-c", "exec bash scripts/run_ci_checks.sh >\"$1\" 2>\"$2\"", "kujo-ssg-ci", stdout_path, stderr_path], {
+		"cwd": ssg_root,
+		"timeout_ms": config["repository_check_timeout_ms"],
+		"max_output_bytes": 65536,
+		"inherit_env": true
+	})
+	# The fixed shell program redirects to positional argv paths, never interpolated
+	# shell text. Kujo stream_* options also cap disk logs, so use OS redirection.
+	if !result.success {
+		if result.timed_out {
+			fail("Repository checks timed out after " + to_string(config["repository_check_timeout_ms"] / 1000) + " seconds; logs: " + log_dir)
+		}
+		fail("Repository checks failed with exit code " + to_string(result.exitcode) + "; logs: " + log_dir)
+	}
+	print("Repository checks passed; logs: " + log_dir)
+}
+
+func ensure_dir(dir_path) {
+	clean := trim(dir_path)
+	if len(clean) == 0 || path_exists(clean) {
+		return null
+	}
+	parent := dirname(clean)
+	if len(parent) > 0 && parent != clean && path_exists(parent) == false {
+		ensure_dir(parent)
+	}
+	if path_exists(clean) == false {
+		create_dir(clean)
+	}
+}
+
+func ensure_parent(file_path) {
+	parent_dir := dirname(file_path)
+	if len(parent_dir) > 0 {
+		ensure_dir(parent_dir)
+	}
+}
+
+func under_root(root, value, label) {
+	candidate := value
+	if starts_with(candidate, "/") == false {
+		candidate = path_join(root, candidate)
+	}
+	root_abs := path_absolute(root)
+	candidate_abs := absolute_path_for_candidate(candidate)
+	prefix := root_abs
+	if ends_with(prefix, "/") == false {
+		prefix = prefix + "/"
+	}
+	if candidate_abs != root_abs && starts_with(candidate_abs, prefix) == false {
+		fail(label + " must stay under SSG root: " + candidate_abs)
+	}
+	return candidate_abs
+}
+
+func absolute_path_for_candidate(candidate_path) {
+	if path_exists(candidate_path) {
+		return path_absolute(candidate_path)
+	}
+	parent_dir := dirname(candidate_path)
+	if len(parent_dir) == 0 || parent_dir == candidate_path {
+		return candidate_path
+	}
+	parent_abs := absolute_path_for_candidate(parent_dir)
+	return path_join(parent_abs, basename(candidate_path))
+}
+
+func load_json(file_path, label) {
+	if path_exists(file_path) == false {
+		fail(label + " not found: " + file_path)
+	}
+	try {
+		return parse_json(read_file(file_path))
+	} except err {
+		fail(label + " is not valid JSON: " + file_path + ": " + to_string(err))
+	}
+}
+
+func should_reduce_json(file_path) {
+	if path_exists(file_path) == false {
+		return false
+	}
+	return file_size(file_path) > MAX_KUJO_READ_FILE_BYTES
+}
+
+func reduce_docgen_json(project_path, gaps_path, docgen_out, ssg_root) {
+	if should_reduce_json(project_path) == false && should_reduce_json(gaps_path) == false {
+		return {"project_path": project_path, "gaps_path": gaps_path}
+	}
+	reduced_project := path_join(docgen_out, "docgen-bridge-project.json")
+	reduced_gaps := path_join(docgen_out, "docgen-bridge-gaps.json")
+	script_path := path_join(ssg_root, "scripts/docgen_reduce.py")
+	if path_exists(script_path) == false {
+		fail("large DocGen JSON requires reducer script: " + script_path)
+	}
+	run_command(["python3", script_path, project_path, gaps_path, reduced_project, reduced_gaps], ssg_root, true)
+	return {"project_path": reduced_project, "gaps_path": reduced_gaps}
+}
+
+func generate_large_content(payload_path, project_path, gaps_path, content_root, source_link_template, dry_run, docgen_out, ssg_root, allow_adapter_low_yield) {
+	script_path := path_join(ssg_root, "scripts/docgen_reduce.py")
+	if path_exists(script_path) == false {
+		fail("large DocGen JSON requires reducer script: " + script_path)
+	}
+	result := run_command([
+		"python3",
+		script_path,
+		"render",
+		payload_path,
+		project_path,
+		gaps_path,
+		content_root,
+		source_link_template,
+		bool_text(dry_run),
+		MANIFEST_NAME,
+		MANIFEST_SCHEMA,
+		DOCGEN_SUMMARY_SCHEMA,
+		bool_text(allow_adapter_low_yield)
+	], ssg_root, true)
+	rendered := parse_json(result)
+	return rendered["files"]
+}
+
+func run_command(command, cwd, capture) {
+	options := {
+		"cwd": cwd,
+		"timeout_ms": 300000,
+		"max_output_bytes": 16777216,
+		"inherit_env": true
+	}
+	result := spawn_process(command, options)
+	if result.success {
+	} else {
+		message := "command failed with exit code " + to_string(result.exitcode) + ": " + join(command, " ")
+		if capture {
+			message = message + "\n" + result.stdout + result.stderr
+		}
+		fail(message)
+	}
+	if result.stdout_truncated || result.stderr_truncated {
+		fail("command output was truncated: " + join(command, " "))
+	}
+	return result.stdout
+}
+
+func bool_text(value) {
+	if value { return "true" }
+	return "false"
+}
+
+func yaml_quote(value) {
+	out := replace(to_string(value), "\\", "\\\\")
+	out = replace(out, "\"", "\\\"")
+	out = replace(out, "\n", "\\n")
+	return "\"" + out + "\""
+}
+
+func frontmatter(fields) {
+	lines := ["---"]
+	i := 0
+	loop {
+		if i >= len(fields) { break }
+		field := fields[i]
+		i = i + 1
+		value := field["value"]
+		rendered := ""
+		if is_bool(value) {
+			rendered = bool_text(value)
+		} else if is_int(value) {
+			rendered = to_string(value)
+		} else {
+			rendered = yaml_quote(value)
+		}
+		lines = push(lines, field["key"] + ": " + rendered)
+	}
+	lines = push(lines, "---")
+	return join(lines, "\n") + "\n\n"
+}
+
+func fm_field(key, value) {
+	return {"key": key, "value": value}
+}
+
+func repo_name(repo_path) {
+	base := basename(trim(repo_path))
+	if len(base) == 0 {
+		return "repository"
+	}
+	return base
+}
+
+func generated_fields(title, slug, description, payload, extra) {
+	fields := [
+		fm_field("title", title),
+		fm_field("custom_url", slug),
+		fm_field("description", description),
+		fm_field("seo_title", title),
+		fm_field("template", "docs"),
+		fm_field("section", "Reference"),
+		fm_field("audience", "developer"),
+		fm_field("difficulty", "reference"),
+		fm_field("status", "generated"),
+		fm_field("version", "current"),
+		fm_field("docgen_generated", true),
+		fm_field("docgen_source_repo", repo_name(to_string(payload["file"]))),
+		fm_field("docgen_schema_version", DOCGEN_SUMMARY_SCHEMA)
+	]
+	i := 0
+	loop {
+		if i >= len(extra) { break }
+		fields = push(fields, extra[i])
+		i = i + 1
+	}
+	return fields
+}
+
+func slug_preview(raw) {
+	text := to_lower(to_string(raw))
+	text = regex_replace(text, "[^a-z0-9]+", "-")
+	text = trim(text)
+	loop {
+		if starts_with(text, "-") == false { break }
+		text = substring(text, 1, len(text))
+	}
+	loop {
+		if ends_with(text, "-") == false { break }
+		text = substring(text, 0, len(text) - 1)
+	}
+	if len(text) == 0 {
+		return "item"
+	}
+	return text
+}
+
+func stable_slug(raw, used) {
+	base := slug_preview(raw)
+	slug := base
+	if has_key(used, slug) {
+		hash := substring(md5(raw), 0, 8)
+		slug = base + "-" + hash
+		counter := 2
+		loop {
+			if has_key(used, slug) {
+			} else {
+				break
+			}
+			slug = base + "-" + hash + "-" + to_string(counter)
+			counter = counter + 1
+		}
+	}
+	used[slug] = true
+	return slug
+}
+
+func heading(title, level) {
+	return repeat("#", level) + " " + title + "\n\n"
+}
+
+func repeat(value, count) {
+	out := ""
+	i := 0
+	loop {
+		if i >= count { break }
+		out = out + value
+		i = i + 1
+	}
+	return out
+}
+
+func source_href(symbol, template) {
+	if len(template) == 0 {
+		return ""
+	}
+	href := replace(template, "{path}", to_string(symbol["source_path"]))
+	href = replace(href, "{line}", to_string(symbol["line"]))
+	return href
+}
+
+func render_symbol(symbol, source_link_template) {
+	title := to_string(symbol["qualified_name"])
+	if len(title) == 0 {
+		title = to_string(symbol["name"])
+	}
+	docs := symbol["docs"]
+	out := heading(title, 3)
+	out = out + "- Kind: `" + to_string(symbol["kind"]) + "`\n"
+	out = out + "- Visibility: `" + to_string(symbol["visibility"]) + "`\n"
+	out = out + "- Source: `" + to_string(symbol["source_path"]) + ":" + to_string(symbol["line"]) + "`\n"
+	href := source_href(symbol, source_link_template)
+	if len(href) > 0 {
+		out = out + "- Source link: [" + href + "](" + href + ")\n"
+	}
+	if has_key(symbol, "signature") && symbol["signature"] != null {
+		out = out + "- Signature: `" + to_string(symbol["signature"]) + "`\n"
+	}
+	out = out + "\n"
+
+	doc_lines := docs["lines"]
+	if docs["placeholder"] || len(doc_lines) == 0 {
+		out = out + "Documentation needed. This symbol was discovered from the source code, but no human-authored documentation was found.\n\n"
+	} else {
+		i := 0
+		loop {
+			if i >= len(doc_lines) { break }
+			out = out + to_string(doc_lines[i]) + "\n"
+			i = i + 1
+		}
+		out = out + "\n"
+	}
+
+	examples := symbol["examples"]
+	if len(examples) > 0 {
+		out = out + heading("Examples", 4)
+		i := 0
+		loop {
+			if i >= len(examples) { break }
+			example := examples[i]
+			language := to_string(symbol["language"])
+			if has_key(example, "language") && example["language"] != null {
+				language = to_string(example["language"])
+			}
+			out = out + "```" + language + "\n" + to_string(example["code"]) + "\n```\n\n"
+			i = i + 1
+		}
+	}
+	return out
+}
+
+func count_undocumented(symbols) {
+	count := 0
+	i := 0
+	loop {
+		if i >= len(symbols) { break }
+		docs := symbols[i]["docs"]
+		if docs["placeholder"] || len(docs["lines"]) == 0 {
+			count = count + 1
+		}
+		i = i + 1
+	}
+	return count
+}
+
+func count_table(summary) {
+	cache := summary["cache_stats"]
+	return "| Metric | Count |\n| --- | ---: |\n" +
+		"| Items | " + to_string(summary["item_count"]) + " |\n" +
+		"| Project symbols | " + to_string(summary["project_symbol_count"]) + " |\n" +
+		"| Undocumented | " + to_string(summary["undocumented_count"]) + " |\n" +
+		"| Broken links | " + to_string(summary["broken_link_count"]) + " |\n" +
+		"| Warnings | " + to_string(summary["warning_count"]) + " |\n" +
+		"| Cache hits | " + to_string(cache["hits"]) + " |\n" +
+		"| Cache misses | " + to_string(cache["misses"]) + " |\n\n"
+}
+
+func string_in_list(values, needle) {
+	i := 0
+	loop {
+		if i >= len(values) { break }
+		if values[i] == needle {
+			return true
+		}
+		i = i + 1
+	}
+	return false
+}
+
+# Validate every generated descendant before any read, write, or stale cleanup.
+func generated_path(content_root, entry) {
+    if len(entry) == 0 || contains(entry, "\\") || contains(entry, ":") {
+        fail("manifest entry escapes generated root: " + entry)
+    }
+    target := content_root
+    for part in split(entry, "/") {
+        if part == "" || part == "." || part == ".." {
+            fail("manifest entry escapes generated root: " + entry)
+        }
+        target = path_join(target, part)
+        present := path_exists(target)
+        # path_exists follows links; directory membership also catches dangling
+        # links without calling path_is_symlink on a genuinely missing path.
+        if !present && path_is_dir(dirname(target)) {
+            for name in list_dir(dirname(target)) {
+                if name == part { present = true }
+            }
+        }
+        if present && path_is_symlink(target) {
+            fail("generated path must not be a symbolic link: " + entry)
+        }
+    }
+    return target
+}
+
+func old_manifest(content_root) {
+	path := generated_path(content_root, MANIFEST_NAME)
+	if path_exists(path) {
+	} else {
+		return {}
+	}
+	manifest := load_json(path, "DocGen SSG manifest")
+	if manifest["schema_version"] != MANIFEST_SCHEMA {
+		fail("manifest schema mismatch: " + path)
+	}
+	return manifest
+}
+
+func remove_stale(content_root, manifest, new_files, dry_run) {
+	if has_key(manifest, "files") {
+	} else {
+		return null
+	}
+	manifest_entries := manifest["files"]
+    if !is_array(manifest_entries) { fail("invalid DocGen SSG manifest files") }
+    # Check all entries before the first deletion, including retained entries.
+    for entry in manifest_entries {
+        if !is_string(entry) { fail("invalid DocGen SSG manifest entry") }
+        generated_path(content_root, entry)
+    }
+	i := 0
+	loop {
+		if i >= len(manifest_entries) { break }
+		entry := to_string(manifest_entries[i])
+		i = i + 1
+		if index_of(entry, "..") >= 0 || starts_with(entry, "/") {
+			fail("manifest entry escapes generated root: " + entry)
+		}
+		still_generated := false
+		new_idx := 0
+		loop {
+			if new_idx >= len(new_files) { break }
+			if new_files[new_idx] == entry {
+				still_generated = true
+				break
+			}
+			new_idx = new_idx + 1
+		}
+		if still_generated == false {
+			target_path := generated_path(content_root, entry)
+			if path_exists(target_path) {
+				if dry_run {
+					skipped_delete := true
+				} else {
+					delete_file(target_path)
+				}
+			}
+		}
+	}
+}
+
+func write_markdown(file_path, content, dry_run) {
+	if dry_run {
+		return false
+	}
+	if path_exists(file_path) && read_file(file_path) == content {
+		return false
+	}
+	ensure_parent(file_path)
+	write_file(file_path, content, true)
+	return true
+}
+
+func add_page(pages, files, content_root, slug, body) {
+	filename := slug + ".md"
+	pages[filename] = body
+	files = push(files, filename)
+	return files
+}
+
+func get_payload_path(raw_path, payload_parent) {
+	if starts_with(raw_path, "/") {
+		return raw_path
+	}
+	return path_join(payload_parent, raw_path)
+}
+
+func dirname_or_dot(file_path) {
+	parent_dir := dirname(file_path)
+	if len(parent_dir) == 0 {
+		return "."
+	}
+	return parent_dir
+}
+
+func run_docgen(config, ssg_root, docgen_out, cache_dir) {
+	if len(config["target_repo"]) == 0 {
+		fail("--target-repo is required unless --docgen-payload is set")
+	}
+	ensure_dir(docgen_out)
+	ensure_dir(cache_dir)
+	command := [
+		config["kujo_bin"],
+		"docgen",
+		config["target_repo"],
+		"--format",
+		"all",
+		"--json",
+		"--search-index",
+		"--emit-ai-tasks",
+		"--cache-dir",
+		cache_dir,
+		"--source-links",
+		"--fail-on-broken-links",
+		"--out-dir",
+		docgen_out
+	]
+	if config["include_private"] {
+		command = push(command, "--include-private")
+	} else {
+		command = push(command, "--public-only")
+	}
+	if config["include_builtins"] {
+	} else {
+		command = push(command, "--no-builtins")
+	}
+	if len(config["source_link_template"]) > 0 {
+		command = push(command, "--source-link-template")
+		command = push(command, config["source_link_template"])
+	}
+	if len(config["languages"]) > 0 {
+		command = push(command, "--languages")
+		command = push(command, config["languages"])
+	}
+	if config["strict"] {
+		if config["allow_undocumented"] {
+		} else {
+			command = push(command, "--fail-on-undocumented")
+		}
+	}
+	stdout := run_command(command, ssg_root, true)
+	payload_path := generated_path(docgen_out, "docgen-cli.json")
+	write_file(payload_path, stdout, true)
+	return {"payload": parse_json(stdout), "payload_path": payload_path}
+}
+
+func validate_payload(payload, project, config) {
+	if has_key(payload, "summary") == false || is_dict(payload["summary"]) == false {
+		fail("DocGen payload is missing summary object")
+	}
+	summary := payload["summary"]
+	if summary["schema_version"] != DOCGEN_SUMMARY_SCHEMA {
+		fail("DocGen summary schema mismatch: expected " + DOCGEN_SUMMARY_SCHEMA + ", got " + to_string(summary["schema_version"]))
+	}
+	failures := []
+	if config["strict"] && summary["gate_failed"] {
+		failures = push(failures, "DocGen summary reports gate_failed=true")
+	}
+	max_undocumented := config["max_undocumented"]
+	if max_undocumented < 0 && config["strict"] {
+		max_undocumented = 0
+	}
+	if max_undocumented >= 0 && summary["undocumented_count"] > max_undocumented {
+		failures = push(failures, "undocumented_count=" + to_string(summary["undocumented_count"]) + " exceeds " + to_string(max_undocumented))
+	}
+	if summary["broken_link_count"] > config["max_broken_links"] {
+		failures = push(failures, "broken_link_count=" + to_string(summary["broken_link_count"]) + " exceeds " + to_string(config["max_broken_links"]))
+	}
+	if summary["warning_count"] > config["max_warnings"] {
+		failures = push(failures, "warning_count=" + to_string(summary["warning_count"]) + " exceeds " + to_string(config["max_warnings"]))
+	}
+	skip_counts := summary["discovery_skip_counts"]
+	skip_keys := sort(keys(skip_counts))
+	i := 0
+	loop {
+		if i >= len(skip_keys) { break }
+		key := skip_keys[i]
+		i = i + 1
+		if skip_counts[key] > config["max_discovery_skips"] {
+			failures = push(failures, "discovery_skip_counts." + key + "=" + to_string(skip_counts[key]) + " exceeds " + to_string(config["max_discovery_skips"]))
+		}
+	}
+	if config["allow_adapter_low_yield"] {
+	} else {
+		diagnostics := []
+		if has_key(project, "diagnostics") {
+			diagnostics = project["diagnostics"]
+		}
+		diag_idx := 0
+		loop {
+			if diag_idx >= len(diagnostics) { break }
+			diagnostic := diagnostics[diag_idx]
+			diag_idx = diag_idx + 1
+			if diagnostic["code"] == "DOCGEN_ADAPTER_LOW_YIELD" {
+				failures = push(failures, "DocGen emitted DOCGEN_ADAPTER_LOW_YIELD")
+			}
+		}
+	}
+	if len(failures) > 0 {
+		i = 0
+		loop {
+			if i >= len(failures) { break }
+			print("DocGen SSG gate failed: " + failures[i])
+			i = i + 1
+		}
+		exit(1)
+	}
+}
+
+func generate_content(payload, project, gaps, content_root, source_link_template, dry_run) {
+	summary := payload["summary"]
+	symbols := project["symbols"]
+	languages := sort(project["languages"])
+	used := {}
+	pages := {}
+	files := []
+
+	overview_slug := stable_slug("api-reference", used)
+	overview := frontmatter(generated_fields(
+		"API Reference",
+		overview_slug,
+		"Generated API documentation from Kujo DocGen.",
+		payload,
+		[
+			fm_field("docgen_symbol_count", summary["project_symbol_count"]),
+			fm_field("docgen_undocumented_count", summary["undocumented_count"])
+		]
+	))
+	overview = overview + heading("API Reference", 1)
+	overview = overview + "Generated from Kujo DocGen output.\n\n"
+	overview = overview + count_table(summary)
+	overview = overview + heading("Languages", 2)
+	i := 0
+	loop {
+		if i >= len(languages) { break }
+		language := languages[i]
+		i = i + 1
+		overview = overview + "- [" + language + "](./language-" + slug_preview(language) + "/)\n"
+	}
+	overview_file := overview_slug + ".md"
+	pages[overview_file] = overview + "\n"
+	files = push(files, overview_file)
+
+	i = 0
+	loop {
+		if i >= len(languages) { break }
+		language := languages[i]
+		i = i + 1
+		language_symbols := []
+		symbol_idx := 0
+		loop {
+			if symbol_idx >= len(symbols) { break }
+			symbol := symbols[symbol_idx]
+			symbol_idx = symbol_idx + 1
+			if symbol["language"] == language {
+				language_symbols = push(language_symbols, symbol)
+			}
+		}
+		slug := stable_slug("language-" + language, used)
+		body := frontmatter(generated_fields(
+			language + " API",
+			slug,
+			"Generated " + language + " API documentation.",
+			payload,
+			[
+				fm_field("docgen_language", language),
+				fm_field("docgen_symbol_count", len(language_symbols))
+			]
+		))
+		body = body + heading(language + " API", 1)
+		body = body + "Symbols: " + to_string(len(language_symbols)) + "\n\n"
+		j := 0
+		loop {
+			if j >= len(language_symbols) { break }
+			body = body + render_symbol(language_symbols[j], source_link_template)
+			j = j + 1
+		}
+		file := slug + ".md"
+		pages[file] = body
+		files = push(files, file)
+	}
+
+	by_module := {}
+	symbol_idx := 0
+	loop {
+		if symbol_idx >= len(symbols) { break }
+		symbol := symbols[symbol_idx]
+		symbol_idx = symbol_idx + 1
+		module_path := to_string(symbol["source_path"])
+		module_symbols := []
+		if has_key(by_module, module_path) {
+			module_symbols = by_module[module_path]
+		}
+		module_symbols = push(module_symbols, symbol)
+		by_module[module_path] = module_symbols
+	}
+	module_paths := sort(keys(by_module))
+	i = 0
+	loop {
+		if i >= len(module_paths) { break }
+		module_path := module_paths[i]
+		i = i + 1
+		module_symbols := by_module[module_path]
+		slug := stable_slug("module-" + module_path, used)
+		body := frontmatter(generated_fields(
+			module_path,
+			slug,
+			"Generated API documentation for " + module_path + ".",
+			payload,
+			[
+				fm_field("docgen_source_path", module_path),
+				fm_field("docgen_symbol_count", len(module_symbols)),
+				fm_field("docgen_undocumented_count", count_undocumented(module_symbols))
+			]
+		))
+		body = body + heading(module_path, 1)
+		body = body + "Symbols: " + to_string(len(module_symbols)) + "\n\n"
+		j := 0
+		loop {
+			if j >= len(module_symbols) { break }
+			body = body + render_symbol(module_symbols[j], source_link_template)
+			j = j + 1
+		}
+		file := slug + ".md"
+		pages[file] = body
+		files = push(files, file)
+	}
+
+	gaps_slug := stable_slug("documentation-gaps", used)
+	gap_body := frontmatter(generated_fields(
+		"Documentation Gaps",
+		gaps_slug,
+		"Generated documentation gaps from Kujo DocGen.",
+		payload,
+		[fm_field("docgen_undocumented_count", summary["undocumented_count"])]
+	))
+	gap_body = gap_body + heading("Documentation Gaps", 1)
+	if len(gaps) == 0 {
+		gap_body = gap_body + "No documentation gaps were reported.\n"
+	} else {
+		gap_idx := 0
+		loop {
+			if gap_idx >= len(gaps) { break }
+			gap := gaps[gap_idx]
+			gap_idx = gap_idx + 1
+			gap_body = gap_body + heading(to_string(gap["symbol_name"]), 2)
+			gap_body = gap_body + "- Kind: `" + to_string(gap["symbol_kind"]) + "`\n"
+			gap_body = gap_body + "- Source: `" + to_string(gap["source_path"]) + ":" + to_string(gap["line"]) + "`\n"
+			gap_body = gap_body + "- Missing: `" + join(gap["missing_sections"], ", ") + "`\n\n"
+			if has_key(gap, "suggested_ai_prompt") {
+				gap_body = gap_body + "```text\n" + to_string(gap["suggested_ai_prompt"]) + "\n```\n\n"
+			}
+		}
+	}
+	gaps_file := gaps_slug + ".md"
+	pages[gaps_file] = gap_body
+	files = push(files, gaps_file)
+
+	for file in files { generated_path(content_root, file) }
+	generated_path(content_root, MANIFEST_NAME)
+	remove_stale(content_root, old_manifest(content_root), files, dry_run)
+	sorted_files := sort(files)
+	i = 0
+	loop {
+		if i >= len(sorted_files) { break }
+		file := sorted_files[i]
+		i = i + 1
+		write_markdown(generated_path(content_root, file), pages[file], dry_run)
+	}
+
+	manifest := {
+		"schema_version": MANIFEST_SCHEMA,
+		"docgen_schema_version": DOCGEN_SUMMARY_SCHEMA,
+		"source_repo": payload["file"],
+		"files": sorted_files,
+		"summary": {
+			"item_count": summary["item_count"],
+			"project_symbol_count": summary["project_symbol_count"],
+			"undocumented_count": summary["undocumented_count"],
+			"broken_link_count": summary["broken_link_count"],
+			"warning_count": summary["warning_count"],
+			"languages": summary["languages"]
+		}
+	}
+	if dry_run {
+		skipped_manifest := true
+	} else {
+		ensure_dir(content_root)
+		write_file(generated_path(content_root, MANIFEST_NAME), to_json_pretty(manifest) + "\n", true)
+	}
+	return sorted_files
+}
+
+func print_summary(payload, files, content_root) {
+	summary := payload["summary"]
+	cache := summary["cache_stats"]
+	print("DocGen SSG bridge complete")
+	print("  Generated content root: " + content_root)
+	print("  Markdown files generated: " + to_string(len(files)))
+	print("  item_count: " + to_string(summary["item_count"]))
+	print("  project_symbol_count: " + to_string(summary["project_symbol_count"]))
+	print("  undocumented_count: " + to_string(summary["undocumented_count"]))
+	print("  broken_link_count: " + to_string(summary["broken_link_count"]))
+	print("  warning_count: " + to_string(summary["warning_count"]))
+	print("  cache_hits: " + to_string(cache["hits"]))
+	print("  cache_misses: " + to_string(cache["misses"]))
+	print("  languages: " + join(summary["languages"], ", "))
+}
+
+func config_from_args(cli_args) {
+	if flag_present(cli_args, "--help") || flag_present(cli_args, "-h") {
+		usage()
+		exit(0)
+	}
+	kujo_bin := option_value(cli_args, "--kujo-bin", "")
+	if len(kujo_bin) == 0 {
+		kujo_bin = env("KUJO_BIN")
+	}
+	if len(kujo_bin) == 0 {
+		kujo_bin = "kujo"
+	}
+	return {
+		"target_repo": option_value(cli_args, "--target-repo", ""),
+		"ssg_root": option_value(cli_args, "--ssg-root", os_getcwd()),
+		"content_out": option_value(cli_args, "--content-out", ""),
+		"docgen_out": option_value(cli_args, "--docgen-out", ".docgen/output"),
+		"cache_dir": option_value(cli_args, "--cache-dir", ".docgen/cache"),
+		"site_url": option_value(cli_args, "--site-url", "https://example.com"),
+		"source_link_template": option_value(cli_args, "--source-link-template", ""),
+		"kujo_bin": kujo_bin,
+		"docgen_payload": option_value(cli_args, "--docgen-payload", ""),
+		"project_json": option_value(cli_args, "--project-json", ""),
+		"gaps_json": option_value(cli_args, "--gaps-json", ""),
+		"languages": option_value(cli_args, "--languages", ""),
+		"include_private": flag_present(cli_args, "--include-private"),
+		"include_builtins": flag_present(cli_args, "--include-builtins"),
+		"strict": flag_present(cli_args, "--strict"),
+		"allow_undocumented": flag_present(cli_args, "--allow-undocumented"),
+		"max_undocumented": int_option(cli_args, "--max-undocumented", -1),
+		"max_broken_links": int_option(cli_args, "--max-broken-links", 0),
+		"max_warnings": int_option(cli_args, "--max-warnings", 0),
+		"max_discovery_skips": int_option(cli_args, "--max-discovery-skips", 0),
+		"allow_adapter_low_yield": flag_present(cli_args, "--allow-adapter-low-yield"),
+		"build_output": option_value(cli_args, "--output", ""),
+		"skip_repository_checks": flag_present(cli_args, "--skip-repository-checks"),
+		"repository_check_timeout_ms": repository_check_timeout(cli_args),
+		"skip_build": flag_present(cli_args, "--skip-build"),
+		"skip_validation": flag_present(cli_args, "--skip-validation"),
+		"dry_run": flag_present(cli_args, "--dry-run")
+	}
+}
+
+config := config_from_args(args())
+if config["dry_run"] && len(config["docgen_payload"]) == 0 {
+	fail("--dry-run requires --docgen-payload; generating DocGen artifacts would write files")
+}
+ssg_root := path_absolute(config["ssg_root"])
+content_out := config["content_out"]
+docgen_out := under_root(ssg_root, config["docgen_out"], "--docgen-out")
+cache_dir := under_root(ssg_root, config["cache_dir"], "--cache-dir")
+
+# Resolve and validate build paths before generating or deleting any Markdown.
+build_command := [config["kujo_bin"], "run", "./build.kujo", "--", "--site-url", config["site_url"]]
+if len(config["build_output"]) > 0 {
+	build_command = push(build_command, "--output")
+	build_command = push(build_command, config["build_output"])
+}
+build_output := ""
+if !config["skip_build"] && !config["dry_run"] {
+	inspection := run_command(push(build_command, "--inspect-config"), ssg_root, true)
+	receipt := parse_json(trim(inspection))
+	if !is_dict(receipt) || receipt["schema_version"] != "kujo-ssg-config/v1" || receipt["ok"] != true || !is_dict(receipt["settings"]) {
+		fail("build.kujo returned an invalid configuration receipt")
+	}
+	build_output = receipt["settings"]["output"]
+	if len(content_out) == 0 {
+		content_out = path_join(receipt["settings"]["content"], "reference")
+	}
+	if !config["skip_validation"] && !config["skip_repository_checks"] && !path_exists(path_join(ssg_root, "scripts/run_ci_checks.sh")) {
+		fail("Repository CI script is missing; use --skip-repository-checks for a packaged site (generated-output validation remains enabled)")
+	}
+}
+
+if len(content_out) == 0 {
+	content_out = "content/reference"
+}
+content_root := under_root(ssg_root, content_out, "--content-out")
+
+payload := {}
+payload_path := ""
+if len(config["docgen_payload"]) > 0 {
+	payload_path = path_absolute(config["docgen_payload"])
+	payload = load_json(payload_path, "DocGen CLI payload")
+} else {
+	docgen_result := run_docgen(config, ssg_root, docgen_out, cache_dir)
+	payload = docgen_result["payload"]
+	payload_path = docgen_result["payload_path"]
+}
+
+payload_parent := dirname_or_dot(payload_path)
+project_path := config["project_json"]
+if len(project_path) == 0 {
+	project_path = to_string(payload["project_json_path"])
+}
+if len(project_path) == 0 {
+	project_path = path_join(docgen_out, "docgen.json")
+}
+project_path = get_payload_path(project_path, payload_parent)
+
+gaps_path := config["gaps_json"]
+if len(gaps_path) == 0 {
+	gaps_path = to_string(payload["gaps_json_path"])
+}
+if len(gaps_path) == 0 {
+	gaps_path = path_join(docgen_out, "docgen-gaps.json")
+}
+gaps_path = get_payload_path(gaps_path, payload_parent)
+
+large_docgen_json := should_reduce_json(project_path) || should_reduce_json(gaps_path)
+generated_files := []
+if large_docgen_json {
+	validate_payload(payload, {}, config)
+	generated_files = generate_large_content(payload_path, project_path, gaps_path, content_root, config["source_link_template"], config["dry_run"], docgen_out, ssg_root, config["allow_adapter_low_yield"])
+} else {
+	project := load_json(project_path, "DocGen project JSON")
+	gaps := load_json(gaps_path, "DocGen gaps JSON")
+	if is_array(gaps) == false {
+		fail("DocGen gaps JSON must be an array")
+	}
+	validate_payload(payload, project, config)
+	generated_files = generate_content(payload, project, gaps, content_root, config["source_link_template"], config["dry_run"])
+}
+print_summary(payload, generated_files, content_root)
+
+if config["skip_build"] || config["dry_run"] {
+	skipped_build := true
+} else {
+	# Repository checks build their own fixtures/site. Run them before the final
+	# requested build so they cannot replace its URL or output with CI defaults.
+	if !config["skip_validation"] && !config["skip_repository_checks"] {
+		run_repository_checks(config, ssg_root, docgen_out)
+	}
+	run_command(build_command, ssg_root, false)
+	if config["skip_validation"] {
+		skipped_validation := true
+	} else {
+		run_command(["bash", "scripts/validate-generated-output.sh", build_output], ssg_root, false)
+	}
+}

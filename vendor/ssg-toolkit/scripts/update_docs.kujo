@@ -1,0 +1,176 @@
+func usage() {
+	print("Usage: kujo run scripts/update_docs.kujo -- [options]")
+	print("")
+	print("Options:")
+	print("  --target-repo <path>              Repository to scan with kujo docgen")
+	print("  --ssg-root <path>                 SSG site root (default: current directory)")
+	print("  --content-out <path>              Generated reference root (default: <content>/reference/generated)")
+	print("  --docgen-out <path>               DocGen output root (default: .docgen/output)")
+	print("  --cache-dir <path>                DocGen cache root (default: .docgen/cache)")
+	print("  --site-url <url>                  Site URL for build/search")
+	print("  --content <path>                  Override configured content root")
+	print("  --output <path>                   Override configured output root")
+	print("  --assets <path>                   Override configured assets root")
+	print("  --templates <path>                Override configured templates root")
+	print("  --search-index <path>             Index destination (default: <assets>/js/docs-search-index.json)")
+	print("  --source-link-template <template> Source links with {path} and {line}")
+	print("  --languages <csv>                 DocGen language filter")
+	print("  --include-private                 Include private/internal symbols")
+	print("  --include-builtins                Include builtin/native API reference")
+	print("  --strict                          Enforce DocGen strict gates")
+	print("  --allow-undocumented              Do not fail strict runs on undocumented symbols")
+	print("  --max-undocumented <n>            Documentation gap threshold")
+	print("  --max-broken-links <n>            Broken link threshold")
+	print("  --max-warnings <n>                Warning threshold")
+	print("  --max-discovery-skips <n>         Discovery skip threshold")
+	print("  --allow-adapter-low-yield         Permit low-yield diagnostics")
+	print("  --skip-validation                 Skip generated-output validation")
+}
+
+func fail(message) {
+	print("ERROR: " + message)
+	exit(1)
+}
+
+func flag_present(cli_args, name) {
+	i := 0
+	loop {
+		if i >= len(cli_args) { break }
+		if cli_args[i] == name { return true }
+		i = i + 1
+	}
+	return false
+}
+
+func option_value(cli_args, name, fallback) {
+	i := 0
+	loop {
+		if i >= len(cli_args) { break }
+		if cli_args[i] == name {
+			if i + 1 >= len(cli_args) {
+				fail("Missing value for " + name)
+			}
+			return cli_args[i + 1]
+		}
+		i = i + 1
+	}
+	return fallback
+}
+
+func append_option(command, cli_args, name) {
+	value := option_value(cli_args, name, "")
+	if len(value) > 0 {
+		command = push(command, name)
+		command = push(command, value)
+	}
+	return command
+}
+
+func run_command(command, cwd) {
+	result := spawn_process(command, {
+		"cwd": cwd,
+		"timeout_ms": 600000,
+		"max_output_bytes": 16777216,
+		"inherit_env": true
+	})
+	if result.stdout_truncated || result.stderr_truncated {
+		fail("command output was truncated: " + join(command, " "))
+	}
+	if result.success {
+		return result
+	}
+	message := "command failed with exit code " + to_string(result.exitcode) + ": " + join(command, " ")
+	if len(result.stdout) > 0 || len(result.stderr) > 0 {
+		message = message + "\n" + result.stdout + result.stderr
+	}
+	fail(message)
+}
+
+func main() {
+	cli_args := args()
+	if flag_present(cli_args, "--help") || flag_present(cli_args, "-h") {
+		usage()
+		exit(0)
+	}
+	kujo_bin := env("KUJO_BIN")
+	if len(kujo_bin) == 0 {
+		kujo_bin = "kujo"
+	}
+	ssg_root := path_absolute(option_value(cli_args, "--ssg-root", os_getcwd()))
+	target_repo := option_value(cli_args, "--target-repo", "")
+	if len(target_repo) == 0 {
+		fail("--target-repo is required")
+	}
+	site_url := option_value(cli_args, "--site-url", "https://example.com")
+	build_command := [kujo_bin, "run", "./build.kujo", "--", "--site-url", site_url]
+	for name in ["--content", "--output", "--assets", "--templates"] {
+		build_command = append_option(build_command, cli_args, name)
+	}
+	inspection := run_command(push(build_command, "--inspect-config"), ssg_root)
+	receipt := parse_json(trim(inspection.stdout))
+	if !is_dict(receipt) || receipt["schema_version"] != "kujo-ssg-config/v1" || receipt["ok"] != true || !is_dict(receipt["settings"]) {
+		fail("build.kujo returned an invalid configuration receipt")
+	}
+	settings := receipt["settings"]
+	content_root := settings["content"]
+	search_index := option_value(cli_args, "--search-index", path_join(settings["assets"], "js/docs-search-index.json"))
+
+	bridge := [
+		kujo_bin,
+		"run",
+		"scripts/docgen_ssg_bridge.kujo",
+		"--",
+		"--target-repo",
+		target_repo,
+		"--content-out",
+		option_value(cli_args, "--content-out", path_join(content_root, "reference/generated")),
+		"--docgen-out",
+		option_value(cli_args, "--docgen-out", ".docgen/output"),
+		"--cache-dir",
+		option_value(cli_args, "--cache-dir", ".docgen/cache"),
+		"--site-url",
+		site_url,
+		"--skip-build",
+		"--skip-validation"
+	]
+	bridge = append_option(bridge, cli_args, "--source-link-template")
+	bridge = append_option(bridge, cli_args, "--languages")
+	bridge = append_option(bridge, cli_args, "--max-undocumented")
+	bridge = append_option(bridge, cli_args, "--max-broken-links")
+	bridge = append_option(bridge, cli_args, "--max-warnings")
+	bridge = append_option(bridge, cli_args, "--max-discovery-skips")
+	if flag_present(cli_args, "--strict") {
+		bridge = push(bridge, "--strict")
+	}
+	if flag_present(cli_args, "--allow-undocumented") {
+		bridge = push(bridge, "--allow-undocumented")
+	}
+	if flag_present(cli_args, "--allow-adapter-low-yield") {
+		bridge = push(bridge, "--allow-adapter-low-yield")
+	}
+	if flag_present(cli_args, "--include-private") {
+		bridge = push(bridge, "--include-private")
+	}
+	if flag_present(cli_args, "--include-builtins") {
+		bridge = push(bridge, "--include-builtins")
+	}
+
+	run_command(bridge, ssg_root)
+	python_search := path_join(ssg_root, "scripts/docs_search_index.py")
+	if path_exists(python_search) {
+		run_command(["python3", python_search, "--content", content_root, "--output", search_index, "--site-url", site_url], ssg_root)
+	} else {
+		run_command([kujo_bin, "run", "scripts/docs_search_index.kujo", "--", "--content", content_root, "--output", search_index, "--site-url", site_url], ssg_root)
+	}
+	run_command(build_command, ssg_root)
+	if flag_present(cli_args, "--skip-validation") {
+	} else {
+		run_command(["bash", "scripts/validate-generated-output.sh", settings["output"]], ssg_root)
+	}
+	print("Docs update complete")
+	print("  Target repo: " + target_repo)
+	print("  SSG root: " + ssg_root)
+	print("  Search index: " + search_index)
+}
+
+main()

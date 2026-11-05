@@ -1,0 +1,319 @@
+func usage() {
+	print("Usage: kujo run scripts/docs_search_index.kujo -- [options]")
+	print("")
+	print("Options:")
+	print("  --content <dir>      Content root (default: content)")
+	print("  --output <path>      Search index JSON path (default: assets/js/docs-search-index.json)")
+	print("  --site-url <url>     Optional absolute URL prefix")
+	print("  --base-route <slug>  Optional route prefix")
+}
+
+func fail(message) {
+	print("ERROR: " + message)
+	exit(1)
+}
+
+func flag_present(cli_args, name) {
+	i := 0
+	loop {
+		if i >= len(cli_args) { break }
+		if cli_args[i] == name { return true }
+		i = i + 1
+	}
+	return false
+}
+
+func option_value(cli_args, name, fallback) {
+	i := 0
+	loop {
+		if i >= len(cli_args) { break }
+		if cli_args[i] == name {
+			if i + 1 >= len(cli_args) {
+				fail("Missing value for " + name)
+			}
+			return cli_args[i + 1]
+		}
+		i = i + 1
+	}
+	return fallback
+}
+
+func ensure_dir(path) {
+	clean := trim(path)
+	if len(clean) == 0 || path_exists(clean) {
+		return null
+	}
+	parent := dirname(clean)
+	if len(parent) > 0 && parent != clean && path_exists(parent) == false {
+		ensure_dir(parent)
+	}
+	if path_exists(clean) == false {
+		create_dir(clean)
+	}
+}
+
+func clean_slug(raw) {
+	text := to_lower(to_string(raw))
+	text = regex_replace(text, "[^a-z0-9]+", "-")
+	loop {
+		if starts_with(text, "-") == false { break }
+		text = substring(text, 1, len(text))
+	}
+	loop {
+		if ends_with(text, "-") == false { break }
+		text = substring(text, 0, len(text) - 1)
+	}
+	if len(text) == 0 {
+		return "untitled"
+	}
+	return text
+}
+
+func to_string_array(value) {
+	if is_array(value) {
+		out := []
+		i := 0
+		loop {
+			if i >= len(value) { break }
+			out = push(out, to_string(value[i]))
+			i = i + 1
+		}
+		return out
+	}
+	clean := trim(to_string(value))
+	if len(clean) == 0 {
+		return []
+	}
+	return [clean]
+}
+
+func parse_bool_value(value, fallback) {
+	if is_bool(value) {
+		return value
+	}
+	text := to_lower(trim(to_string(value)))
+	if text == "true" || text == "yes" || text == "1" {
+		return true
+	}
+	if text == "false" || text == "no" || text == "0" {
+		return false
+	}
+	return fallback
+}
+
+func parse_frontmatter(content) {
+	meta := {
+		"title": "",
+		"description": "",
+		"custom_url": "",
+		"section": "",
+		"audience": "",
+		"difficulty": "",
+		"status": "",
+		"version": "",
+		"tags": [],
+		"draft": false,
+		"search_exclude": false
+	}
+	body := trim(content)
+	lines := split(content, "\n")
+	if len(lines) > 0 && trim(lines[0]) == "---" {
+		closing_line := 0
+		found := false
+		idx := 1
+		loop {
+			if idx >= len(lines) { break }
+			if trim(lines[idx]) == "---" {
+				closing_line = idx
+				found = true
+				break
+			}
+			idx = idx + 1
+		}
+		if found {
+			fm_lines := []
+			body_lines := []
+			idx = 1
+			loop {
+				if idx >= closing_line { break }
+				fm_lines = push(fm_lines, lines[idx])
+				idx = idx + 1
+			}
+			idx = closing_line + 1
+			loop {
+				if idx >= len(lines) { break }
+				body_lines = push(body_lines, lines[idx])
+				idx = idx + 1
+			}
+			fm_text := trim(join(fm_lines, "\n"))
+			body = trim(join(body_lines, "\n"))
+			if len(fm_text) > 0 {
+				try {
+					parsed := parse_yaml(fm_text)
+					if is_dict(parsed) {
+						ks := keys(parsed)
+						i := 0
+						loop {
+							if i >= len(ks) { break }
+							k := ks[i]
+							meta[k] = parsed[k]
+							i = i + 1
+						}
+					}
+				} except err {
+				}
+			}
+		}
+	}
+	meta["draft"] = parse_bool_value(meta["draft"], false)
+	meta["search_exclude"] = parse_bool_value(meta["search_exclude"], false)
+	meta["tags"] = to_string_array(meta["tags"])
+	return {"meta": meta, "body": body}
+}
+
+func markdown_files_recursive(root) {
+	if path_exists(root) == false || path_is_dir(root) == false {
+		return []
+	}
+	files := []
+	entries := sort(list_dir(root))
+	i := 0
+	loop {
+		if i >= len(entries) { break }
+		name := entries[i]
+		i = i + 1
+		if starts_with(name, ".") {
+			continue
+		}
+		full := path_join(root, name)
+		if path_is_symlink(full) {
+			print("Warning: Skipped symlink while scanning docs content: " + full)
+			continue
+		}
+		if path_is_dir(full) {
+			child := markdown_files_recursive(full)
+			j := 0
+			loop {
+				if j >= len(child) { break }
+				files = push(files, child[j])
+				j = j + 1
+			}
+		} else if path_is_file(full) && ends_with(name, ".md") {
+			files = push(files, full)
+		}
+	}
+	return files
+}
+
+func strip_markdown(markdown) {
+	text := regex_replace(markdown, "```[\\s\\S]*?```", " ")
+	text = regex_replace(text, "`([^`]+)`", "$1")
+	text = regex_replace(text, "[#*_>\\[\\]()`]", " ")
+	text = regex_replace(text, "\\s+", " ")
+	return trim(text)
+}
+
+func route_for(content_root, path, meta) {
+	rel := substring(path, len(content_root), len(path))
+	if starts_with(rel, "/") {
+		rel = substring(rel, 1, len(rel))
+	}
+	parts := split(rel, "/")
+	file_base := replace(parts[len(parts) - 1], ".md", "")
+	slug := clean_slug(file_base)
+	override := clean_slug(meta["custom_url"])
+	if len(trim(to_string(meta["custom_url"]))) > 0 && override != "untitled" {
+		slug = override
+	}
+	if len(parts) >= 2 && parts[0] != "pages" {
+		return clean_slug(parts[0]) + "/" + slug + "/"
+	}
+	return slug + "/"
+}
+
+func first_headings(markdown) {
+	lines := split(markdown, "\n")
+	headings := []
+	i := 0
+	loop {
+		if i >= len(lines) { break }
+		line := trim(lines[i])
+		i = i + 1
+		if starts_with(line, "#") {
+			clean := trim(regex_replace(line, "^#+\\s*", ""))
+			if len(clean) > 0 {
+				headings = push(headings, clean)
+			}
+		}
+	}
+	return headings
+}
+
+func main() {
+	cli_args := args()
+	if flag_present(cli_args, "--help") || flag_present(cli_args, "-h") {
+		usage()
+		exit(0)
+	}
+	content_root := option_value(cli_args, "--content", "content")
+	output_path := option_value(cli_args, "--output", "assets/js/docs-search-index.json")
+	site_url := trim(option_value(cli_args, "--site-url", ""))
+	if ends_with(site_url, "/") {
+		site_url = substring(site_url, 0, len(site_url) - 1)
+	}
+	base_route := clean_slug(option_value(cli_args, "--base-route", ""))
+	if base_route == "untitled" {
+		base_route = ""
+	}
+
+	files := markdown_files_recursive(content_root)
+	entries := []
+	i := 0
+	loop {
+		if i >= len(files) { break }
+		file := files[i]
+		i = i + 1
+		parsed := parse_frontmatter(read_file(file))
+		meta := parsed["meta"]
+		if meta["draft"] || meta["search_exclude"] {
+			continue
+		}
+		title := trim(to_string(meta["title"]))
+		if len(title) == 0 {
+			title = replace(basename(file), ".md", "")
+		}
+		route := route_for(content_root, file, meta)
+		if len(base_route) > 0 {
+			route = base_route + "/" + route
+		}
+		url := "/" + route
+		if len(site_url) > 0 {
+			url = site_url + "/" + route
+		}
+		text := strip_markdown(parsed["body"])
+		if len(text) > 360 {
+			text = substring(text, 0, 360)
+		}
+		entries = push(entries, {
+			"title": title,
+			"description": trim(to_string(meta["description"])),
+			"url": url,
+			"route": route,
+			"section": trim(to_string(meta["section"])),
+			"audience": trim(to_string(meta["audience"])),
+			"difficulty": trim(to_string(meta["difficulty"])),
+			"status": trim(to_string(meta["status"])),
+			"version": trim(to_string(meta["version"])),
+			"tags": meta["tags"],
+			"headings": first_headings(parsed["body"]),
+			"text": text
+		})
+	}
+	ensure_dir(dirname(output_path))
+	write_file(output_path, to_json_pretty({"schema_version": "kujo-docs-search/v1", "items": entries}) + "\n", true)
+	print("Docs search index generated")
+	print("  Output: " + output_path)
+	print("  Items: " + to_string(len(entries)))
+}
+
+main()

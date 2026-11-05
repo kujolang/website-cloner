@@ -1,0 +1,14 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.ssg.site.build-shards",
+  "version": "1.0.0",
+  "description": "Build an SSG project using a bounded number of deterministic parallel shards.",
+  "input_schema": {
+    "type": "object", "required": ["site_url", "output", "shards", "concurrency"],
+    "properties": { "site_url": { "type": "string", "minLength": 1, "maxLength": 2048 }, "output": { "type": "string", "minLength": 1, "maxLength": 1024 }, "shards": { "type": "integer", "minimum": 1, "maximum": 64 }, "concurrency": { "type": "integer", "minimum": 1, "maximum": 32 } },
+    "additionalProperties": false
+  },
+  "output_schema": { "type": "object", "required": ["built", "output", "shards"], "properties": { "built": { "type": "boolean" }, "output": { "type": "string" }, "shards": { "type": "integer" } }, "additionalProperties": false },
+  "effects": [{ "kind": "read", "resource": "kujo.ssg.project" }, { "kind": "write", "resource": "kujo.ssg.generated-output" }, { "kind": "external", "resource": "kujo.ssg.network" }],
+  "idempotency": { "mode": "keyed" }
+}

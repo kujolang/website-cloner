@@ -1,0 +1,10 @@
+// Installed source baseline: establish actual gallery behavior before export work.
+import assert from'node:assert/strict';import{chromium}from'playwright';
+const origin='http://127.0.0.1:9427',browser=await chromium.launch({channel:'chrome'}),checks=[];
+try{for(const width of[1440,390]){
+ const page=await browser.newPage({viewport:{width,height:900}});let posts=0;await page.route('**/*',r=>{if(!['GET','HEAD'].includes(r.request().method())){posts++;return r.abort();}return new URL(r.request().url()).origin===origin?r.continue():r.abort();});await page.goto(origin+'/product/workshop-shirt/',{waitUntil:'networkidle'});
+ const gallery=page.locator('.woocommerce-product-gallery');assert.equal(await gallery.locator('.flex-control-thumbs img').count(),2);await gallery.locator('.flex-control-thumbs img').nth(1).click();await page.waitForFunction(()=>document.querySelector('.flex-active-slide img')?.getAttribute('src')?.includes('workshop-detail'));
+ await gallery.locator('.flex-control-thumbs img').first().click();await page.waitForFunction(()=>document.querySelector('.flex-active-slide img')?.getAttribute('src')?.includes('workshop-front'));await page.locator('select[name=attribute_size]').selectOption('Large');await page.waitForFunction(()=>document.querySelector('.flex-active-slide img')?.getAttribute('src')?.includes('workshop-detail'));
+ await gallery.locator('.woocommerce-product-gallery__trigger').click();await page.waitForFunction(()=>document.querySelector('.pswp')?.classList.contains('pswp--open'));await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('.pswp')?.classList.contains('pswp--open'));assert.equal(posts,0);
+ checks.push({width,thumbnails:2,thumbnailSelection:true,variationImage:true,fullscreenAndEscape:true,posts});await page.close();
+}console.log(JSON.stringify({plugin:'woocommerce',version:'11.2.1',checks,scope:'Installed source baseline only; export gallery behavior not verified'}));}finally{await browser.close();}

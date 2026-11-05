@@ -1,0 +1,142 @@
+from ability import ability_definition_digest, approval_binding_digest, list_ability_definitions
+from abilities.runtime import create_ssg_ability_registry, make_ssg_ability_invocation, execute_ssg_ability, ssg_ability_policy
+
+func fixed_clock() { return 1000 }
+func fixed_id(kind, invocation) { return kind + "-ssg-test" }
+func audit_ok(phase, invocation, payload) { return {"ok": true, "written": true, "event_id": "audit-" + phase} }
+func consume_ok(approval, invocation) { return {"ok": true} }
+func begin_ok(key_digest, request_digest, invocation) { return {"state": "started"} }
+func complete_ok(key_digest, request_digest, receipt) { return {"ok": true} }
+
+func services() {
+	return {"policy": ssg_ability_policy, "clock_ms": fixed_clock, "id_factory": fixed_id, "audit": audit_ok, "audit_required": true}
+}
+
+registry_result := create_ssg_ability_registry(".", "/usr/bin/true")
+assert(registry_result["ok"], "SSG Ability registry must initialize from canonical definitions")
+registry := registry_result["registry"]
+definitions := list_ability_definitions(registry, "sdk")
+assert(len(definitions) == 10, "SSG pack must expose ten canonical definitions")
+
+inspect_definition := parse_json(read_file("abilities/kujo.ssg.site.inspect.json"))
+inspect_invocation := make_ssg_ability_invocation(inspect_definition, {}, "inspect-1", "")
+inspected := execute_ssg_ability(registry, inspect_invocation, services())
+assert(inspected["ok"], "bounded SSG inspection must execute")
+assert(inspected["receipt"]["status"] == "succeeded", "inspection must return a succeeded canonical receipt")
+assert(inspected["receipt"]["result"]["configuration"] == "kujo-ssg.yml", "inspection must report the canonical configuration")
+
+content_definition := parse_json(read_file("abilities/kujo.ssg.content.list.json"))
+content_invocation := make_ssg_ability_invocation(content_definition, {}, "content-1", "")
+content_result := execute_ssg_ability(registry, content_invocation, services())
+assert(content_result["ok"], "bounded source listing must execute")
+assert(content_result["receipt"]["result"]["count"] > 0, "source listing must find starter content")
+
+validate_definition := parse_json(read_file("abilities/kujo.ssg.site.validate.json"))
+invalid_path_invocation := make_ssg_ability_invocation(validate_definition, {"output": "../outside"}, "validate-1", "")
+invalid_path := execute_ssg_ability(registry, invalid_path_invocation, services())
+assert(invalid_path["ok"] == false, "validation must reject an escaping output path")
+assert(invalid_path["receipt"]["error"]["code"] == "invalid_output_path", "path rejection must survive in the canonical receipt")
+
+shard_definition := parse_json(read_file("abilities/kujo.ssg.site.build-shards.json"))
+invalid_shards := make_ssg_ability_invocation(shard_definition, {"site_url": "https://example.test", "output": "output-ability", "shards": 65, "concurrency": 1}, "shards-invalid", "shards-key")
+invalid_shard_result := execute_ssg_ability(registry, invalid_shards, services())
+assert(invalid_shard_result["ok"] == false, "sharded build must reject an excessive shard count before execution")
+assert(invalid_shard_result["receipt"]["error"]["code"] == "ability_input_invalid", "sharded build bounds must be enforced by the canonical schema")
+
+build_definition := parse_json(read_file("abilities/kujo.ssg.site.build.json"))
+spoofed_loopback := make_ssg_ability_invocation(build_definition, {"site_url": "http://localhost.evil.test", "output": "output-ability", "minify": false}, "build-spoofed", "build-key-spoofed")
+spoofed_loopback["definition_digest"] := ability_definition_digest(build_definition)["digest"]
+spoofed_result := execute_ssg_ability(registry, spoofed_loopback, services())
+assert(spoofed_result["receipt"]["status"] == "approval_required", "build policy must run before the handler")
+
+build_invocation := make_ssg_ability_invocation(build_definition, {"site_url": "https://example.test", "output": "output-ability", "minify": false}, "build-1", "build-key-1")
+build_invocation["definition_digest"] := ability_definition_digest(build_definition)["digest"]
+approval_required := execute_ssg_ability(registry, build_invocation, services())
+assert(approval_required["receipt"]["status"] == "approval_required", "SSG build must require explicit approval")
+
+approval := {
+	"schema": "kujo.ability.approval/v1",
+	"approval_id": "approval-ssg-test",
+	"binding_digest": approval_binding_digest(build_invocation),
+	"approved_by": {"type": "user", "id": "approver-1", "tenant_id": "local", "claims": {}},
+	"issued_at_ms": 900,
+	"expires_at_ms": 1100,
+	"nonce": "nonce-ssg-test",
+	"evidence": {"source": "offline-conformance"}
+}
+build_invocation["approval"] := approval
+approved_services := services()
+approved_services["consume_approval"] := consume_ok
+approved_services["begin_idempotency"] := begin_ok
+approved_services["complete_idempotency"] := complete_ok
+built := execute_ssg_ability(registry, build_invocation, approved_services)
+assert(built["ok"], "approved keyed SSG build must execute")
+assert(built["receipt"]["status"] == "succeeded", "approved build must return a succeeded canonical receipt")
+assert(built["receipt"]["approval_id"] == "approval-ssg-test", "build receipt must preserve approval identity")
+assert(built["receipt"]["idempotency"]["state"] == "completed", "build receipt must preserve completed idempotency")
+
+preview_invocation := make_ssg_ability_invocation(build_definition, {"site_url": "http://127.0.0.1:4173", "output": "output-preview", "minify": false, "drafts": true}, "preview-1", "preview-key-1")
+preview_invocation["definition_digest"] := ability_definition_digest(build_definition)["digest"]
+preview_approval := approval
+preview_approval["binding_digest"] := approval_binding_digest(preview_invocation)
+preview_invocation["approval"] := preview_approval
+preview_result := execute_ssg_ability(registry, preview_invocation, approved_services)
+assert(preview_result["ok"], "approved preview build must execute through the bounded build Ability")
+assert(preview_result["receipt"]["status"] == "succeeded", "preview build must return a succeeded canonical receipt")
+
+approval["binding_digest"] := approval_binding_digest(spoofed_loopback)
+spoofed_loopback["approval"] := approval
+spoofed_result = execute_ssg_ability(registry, spoofed_loopback, approved_services)
+assert(spoofed_result["ok"] == false, "HTTP hostnames that merely start with localhost must be rejected")
+assert(spoofed_result["receipt"]["error"]["code"] == "invalid_site_url", "loopback hostname rejection must survive in the canonical receipt")
+
+for invalid_site_url in ["http://localhost:80@evil.test", "https://", "http://localhost:0", "http://127.0.0.1:65536"] {
+	invalid_url_invocation := make_ssg_ability_invocation(build_definition, {"site_url": invalid_site_url, "output": "output-ability", "minify": false}, "build-invalid-url-" + invalid_site_url, "build-invalid-url-key-" + invalid_site_url)
+	invalid_url_invocation["definition_digest"] := ability_definition_digest(build_definition)["digest"]
+	invalid_url_approval := approval
+	invalid_url_approval["binding_digest"] := approval_binding_digest(invalid_url_invocation)
+	invalid_url_invocation["approval"] := invalid_url_approval
+	invalid_url_result := execute_ssg_ability(registry, invalid_url_invocation, approved_services)
+	assert(invalid_url_result["ok"] == false, "malformed or non-loopback site URLs must be rejected")
+	assert(invalid_url_result["receipt"]["error"]["code"] == "invalid_site_url", "site URL rejection must survive in the canonical receipt")
+}
+
+drive_path_invocation := make_ssg_ability_invocation(validate_definition, {"output": "C:/outside"}, "validate-drive", "")
+drive_path_result := execute_ssg_ability(registry, drive_path_invocation, services())
+assert(drive_path_result["ok"] == false, "drive-qualified output paths must be rejected")
+assert(drive_path_result["receipt"]["error"]["code"] == "invalid_output_path", "drive-qualified path rejection must survive in the canonical receipt")
+
+if env("SSG_ABILITY_REAL_BUILD") == "1" {
+	real_registry_result := create_ssg_ability_registry(".", env("KUJO_BIN"))
+	assert(real_registry_result["ok"], "real SSG Ability registry must initialize")
+	real_invocation := make_ssg_ability_invocation(build_definition, {"site_url": "https://ability-fixture.example.test", "output": "output-ability-conformance", "minify": false}, "build-real-1", "build-real-key-1")
+	real_invocation["definition_digest"] := ability_definition_digest(build_definition)["digest"]
+	real_approval := {
+		"schema": "kujo.ability.approval/v1",
+		"approval_id": "approval-ssg-real",
+		"binding_digest": approval_binding_digest(real_invocation),
+		"approved_by": {"type": "user", "id": "approver-real", "tenant_id": "local", "claims": {}},
+		"issued_at_ms": 900,
+		"expires_at_ms": 1100,
+		"nonce": "nonce-ssg-real",
+		"evidence": {"source": "fixture-conformance"}
+	}
+	real_invocation["approval"] := real_approval
+	real_result := execute_ssg_ability(real_registry_result["registry"], real_invocation, approved_services)
+	assert(real_result["ok"], "approved real SSG fixture build must execute")
+	assert(real_result["receipt"]["status"] == "succeeded", "real fixture build must produce a succeeded receipt")
+	assert(path_is_file("output-ability-conformance/index.html"), "real fixture build must emit its home page")
+	assert(path_is_file("output-ability-conformance/sitemap.xml"), "real fixture build must emit its sitemap")
+	assert(contains(read_file("output-ability-conformance/sitemap.xml"), "https://ability-fixture.example.test/about/"), "real fixture sitemap must preserve the approved origin")
+	output_definition := parse_json(read_file("abilities/kujo.ssg.output.inspect.json"))
+	output_invocation := make_ssg_ability_invocation(output_definition, {"output": "output-ability-conformance"}, "output-real-1", "")
+	output_result := execute_ssg_ability(real_registry_result["registry"], output_invocation, services())
+	assert(output_result["ok"], "generated output inspection must execute")
+	assert(output_result["receipt"]["result"]["route_count"] > 0, "generated output inspection must report routes")
+	readiness_definition := parse_json(read_file("abilities/kujo.ssg.deployment.readiness.json"))
+	readiness_invocation := make_ssg_ability_invocation(readiness_definition, {"output": "output-ability-conformance"}, "readiness-real-1", "")
+	readiness_result := execute_ssg_ability(real_registry_result["registry"], readiness_invocation, services())
+	assert(readiness_result["ok"], "deployment readiness inspection must execute")
+}
+
+print("SSG executable Ability pack contract passed")

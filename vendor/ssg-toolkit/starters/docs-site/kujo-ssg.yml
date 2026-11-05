@@ -1,0 +1,27 @@
+site_url: https://docs.kujo.dev
+site_title: Kujo Docs
+site_tagline: Learn Kujo, run real programs, and keep reference docs generated from source.
+
+output: output
+content: content
+templates: templates
+assets: assets
+
+blog_slug: updates
+posts_at_root: false
+posts_per_page: 12
+sort_by: order
+
+fonts:
+  - Inter
+  - Inter
+
+robots: public
+llms: public
+
+watch: false
+minify: true
+download_remote_images: false
+allow_private_remote_images: false
+no_index: false
+no_aux: false

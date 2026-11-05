@@ -1,0 +1,4 @@
+import assert from'node:assert/strict';import path from'node:path';import{readFile,writeFile}from'node:fs/promises';import{run}from'../../engine/pipeline.mjs';
+const file=path.resolve('work/content/wordpress/wp-content/mu-plugins/fixture-content.php'),before=await readFile(file,'utf8'),needle="esc_html((string)get_field('project_budget'))";
+assert.equal(before.split(needle).length,2,'owned fixture renderer must match before temporary configuration');
+try{await writeFile(file,before.replace(needle,()=>"esc_html('$'.number_format((float)get_field('project_budget'),2,'.',','))"));const html=await(await fetch('http://127.0.0.1:9428/work/studio-chair/')).text();assert.ok(html.includes('$1,200.00'));const result=await run(process.execPath,['tests/fixtures/platform-content-check.mjs','--formatted'],{cwd:process.cwd(),timeout:120000});console.log(result.stdout);}finally{await writeFile(file,before);assert.equal(await readFile(file,'utf8'),before);}

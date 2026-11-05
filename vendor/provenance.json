@@ -1,0 +1,30 @@
+{
+  "ssg": {
+    "repository": "https://github.com/kujolang/ssg",
+    "commit": "615bdb30abd3aba1b1fdc640e934931327c1e083",
+    "license": "MIT",
+    "artifact": "build.kujo"
+  },
+  "sitekit": {
+    "repository": "https://github.com/kujolang/site-kit",
+    "commit": "172ab9605802d5bc3041c9a41518065c6b8c5b21",
+    "version": "1.1.0",
+    "license": "MIT",
+    "artifact": "dist/sitekit.css"
+  },
+  "testedRuntime": "Kujo 1.5.0",
+  "toolkit": {
+    "repository": "https://github.com/kujolang/ssg",
+    "commit": "615bdb30abd3aba1b1fdc640e934931327c1e083",
+    "path": "vendor/ssg-toolkit",
+    "abilityCommit": "be093e62bc93e5ec01e99e7da16c5657507ac820",
+    "license": "MIT",
+    "adapter": "Root Ability runtime routes writes through migration-aware Node build; upstream toolkit retained unchanged."
+  },
+  "exportRuntime": {
+    "bundler": "esbuild 0.28.2",
+    "entry": "scripts/source-project.mjs",
+    "artifact": "vendor/export-source.mjs",
+    "licenses": "vendor/EXPORT-DEPENDENCIES.txt"
+  }
+}

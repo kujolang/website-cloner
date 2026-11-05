@@ -1,0 +1,23 @@
+node_modules/
+.data/
+.env
+artifacts/
+.DS_Store
+work/
+
+seo-audit/**/baseline-website.zip
+seo-audit/**/baseline-migration-report.json
+seo-audit/**/baseline-lighthouse/
+seo-audit/**/after-lighthouse/
+seo-audit/**/baseline/
+seo-audit/**/after/
+
+__pycache__/
+
+# Local reviews and build evidence never belong in a release.
+seo-audit/
+docs/evidence/
+*.sqlite
+*.sqlite3
+*.db
+examples/

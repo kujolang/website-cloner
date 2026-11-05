@@ -1,0 +1,46 @@
+{
+  "jobId": "bdd35decf40e77079ed3fc32d4381fddb1ef10b82695ef6c",
+  "source": "https://wordpress.com/",
+  "aiEnabled": false,
+  "at": "2026-10-25T21:44:16.766Z",
+  "pages": 634,
+  "discovered": 811,
+  "excludedDiscovered": 177,
+  "queued": 15006,
+  "frames": 15,
+  "selection": "Already rendered checkpoint pages; discovery-order sample, not random",
+  "status": "Complete fixed sample; named navigation passes; overall quality gates still fail",
+  "generatedRecords": 633,
+  "grade": {
+    "overall": 8,
+    "visual": 9,
+    "templates": 8,
+    "markdownFrontmatter": 7,
+    "staticFunctionality": 8
+  },
+  "report": "wordpress-com-assessment.md",
+  "baselineGrade": {
+    "overall": 7,
+    "visual": 7,
+    "templates": 8,
+    "markdownFrontmatter": 7,
+    "staticFunctionality": 6
+  },
+  "validVisualComparisons": 11,
+  "visualComparisons": 15,
+  "cacheRebuild": {
+    "workMs": 1014222,
+    "waitMs": 0,
+    "sourceRequests": 0,
+    "downloadBytes": 0
+  },
+  "visualGradeCaveat": "Provisional: historical source baseline predates instant-scroll capture correction; sticky/fixed capture-state consistency requires validation.",
+  "authoring": {
+    "records": 633,
+    "roleTemplates": 5,
+    "components": 417,
+    "repeatTemplates": 199,
+    "markdownSlots": 45957,
+    "roundtripsPassed": 633
+  }
+}

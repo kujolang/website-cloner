@@ -1,0 +1,19 @@
+{
+  "schema": "kujo.ssg.ability-catalog/v1",
+  "pack_id": "kujo.ssg.core",
+  "pack_version": "1.0.0",
+  "ability_version": "1.0.1",
+  "runtime": "runtime.kujo",
+  "entries": [
+    { "definition": "kujo.ssg.site.inspect.json", "handler": "runtime.kujo", "approval_required": false },
+    { "definition": "kujo.ssg.content.list.json", "handler": "scripts/ability-inspect.py", "approval_required": false },
+    { "definition": "kujo.ssg.content.validate.json", "handler": "scripts/ability-inspect.py", "approval_required": false },
+    { "definition": "kujo.ssg.site.validate.json", "handler": "scripts/validate-generated-output.sh", "approval_required": false },
+    { "definition": "kujo.ssg.site.build.json", "handler": "build.kujo", "approval_required": true },
+    { "definition": "kujo.ssg.site.build-shards.json", "handler": "scripts/build-parallel.sh", "approval_required": true },
+    { "definition": "kujo.ssg.output.inspect.json", "handler": "scripts/ability-inspect.py", "approval_required": false },
+    { "definition": "kujo.ssg.output.compare.json", "handler": "scripts/ability-inspect.py", "approval_required": false },
+    { "definition": "kujo.ssg.deployment.readiness.json", "handler": "scripts/ability-inspect.py", "approval_required": false },
+    { "definition": "kujo.ssg.artifact.export.json", "handler": "scripts/ability-inspect.py", "approval_required": true }
+  ]
+}

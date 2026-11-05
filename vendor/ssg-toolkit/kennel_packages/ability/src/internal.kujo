@@ -1,0 +1,66 @@
+export dict_get_or := func(obj, key, fallback) {
+    if type(obj) != "dict" { return fallback }
+    if has_key(obj, key) { return obj[key] }
+    return fallback
+}
+
+export failure := func(code, message, details) {
+    return {"ok": false, "code": code, "message": message, "details": details}
+}
+
+export valid_non_empty_string := func(value, max_length) {
+    if type(value) != "string" { return false }
+    normalized := trim(value)
+    return normalized != "" && len(normalized) <= max_length
+}
+
+export valid_optional_string := func(value, max_length) {
+    if type(value) != "string" { return false }
+    return len(trim(value)) <= max_length
+}
+
+export valid_non_negative_int := func(value) {
+    return type(value) == "int" && value >= 0
+}
+
+export copy_array := func(value) {
+    if type(value) != "array" { return [] }
+    copied := []
+    for item in value { copied = push(copied, item) }
+    return copied
+}
+
+func canonicalize_json_impl(value) {
+    if type(value) == "dict" {
+        normalized := {}
+        ordered_keys := sort(keys(value))
+        for key in ordered_keys { normalized[key] := canonicalize_json_impl(value[key]) }
+        return normalized
+    }
+    if type(value) == "array" {
+        normalized_items := []
+        for item in value { normalized_items = push(normalized_items, canonicalize_json_impl(item)) }
+        return normalized_items
+    }
+    return value
+}
+
+export canonicalize_json := canonicalize_json_impl
+
+export canonical_json := func(value) {
+    return to_json(canonicalize_json_impl(value))
+}
+
+export json_digest := func(value) {
+    return sha256(to_json(canonicalize_json_impl(value)))
+}
+
+export known_fields_only := func(obj, allowed, code, message) {
+    if type(obj) != "dict" { return failure(code, message, {}) }
+    for key in keys(obj) {
+        known := false
+        for allowed_key in allowed { if key == allowed_key { known = true } }
+        if known == false { return failure(code, message, {"field": key}) }
+    }
+    return {"ok": true}
+}

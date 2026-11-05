@@ -1,0 +1,14 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.ssg.deployment.readiness",
+  "version": "1.0.0",
+  "description": "Check bounded generated output for routes, broken links, metadata, and required discovery artifacts before deployment.",
+  "input_schema": { "type": "object", "required": ["output"], "properties": { "output": { "type": "string", "minLength": 1, "maxLength": 1024 } }, "additionalProperties": false },
+  "output_schema": {
+    "type": "object", "required": ["operation", "ready", "file_count", "route_count", "issue_count", "details"],
+    "properties": { "operation": { "type": "string" }, "ready": { "type": "boolean" }, "file_count": { "type": "integer", "minimum": 0 }, "route_count": { "type": "integer", "minimum": 0 }, "issue_count": { "type": "integer", "minimum": 0 }, "details": { "type": "array", "maxItems": 200, "items": { "type": "string" } } },
+    "additionalProperties": false
+  },
+  "effects": [{ "kind": "read", "resource": "kujo.ssg.generated-output" }],
+  "idempotency": { "mode": "intrinsic" }
+}

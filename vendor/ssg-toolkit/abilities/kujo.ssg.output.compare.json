@@ -1,0 +1,14 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.ssg.output.compare",
+  "version": "1.0.0",
+  "description": "Compare two bounded generated output trees by relative path and SHA-256 digest.",
+  "input_schema": { "type": "object", "required": ["left", "right"], "properties": { "left": { "type": "string", "minLength": 1, "maxLength": 1024 }, "right": { "type": "string", "minLength": 1, "maxLength": 1024 } }, "additionalProperties": false },
+  "output_schema": {
+    "type": "object", "required": ["operation", "identical", "left_count", "right_count", "changed_count", "details"],
+    "properties": { "operation": { "type": "string" }, "identical": { "type": "boolean" }, "left_count": { "type": "integer", "minimum": 0 }, "right_count": { "type": "integer", "minimum": 0 }, "changed_count": { "type": "integer", "minimum": 0 }, "details": { "type": "array", "maxItems": 200, "items": { "type": "string" } } },
+    "additionalProperties": false
+  },
+  "effects": [{ "kind": "read", "resource": "kujo.ssg.generated-output" }],
+  "idempotency": { "mode": "intrinsic" }
+}

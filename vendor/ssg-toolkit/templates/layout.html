@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>{{page_title}}</title>
+	<meta name="description" content="{{meta_description}}">
+	<meta name="keywords" content="{{seo_keywords}}">
+	<meta name="author" content="{{author_meta}}">
+	{{canonical_tag}}
+	{{favicon_tag}}
+	{{rss_link_tag}}
+	<meta property="og:title" content="{{seo_title}}">
+	<meta property="og:description" content="{{seo_description}}">
+	<meta property="og:url" content="{{og_url}}">
+	<meta property="og:type" content="{{og_type}}">
+	<meta property="og:site_name" content="{{site_title}}">
+	<meta property="og:locale" content="{{og_locale}}">
+	{{og_image_tag}}
+	{{og_article_tags}}
+	<meta name="twitter:card" content="summary_large_image">
+	<meta name="twitter:title" content="{{seo_title}}">
+	<meta name="twitter:description" content="{{seo_description}}">
+	{{twitter_image_tag}}
+	<link href="{{relative_path}}assets/css/tailwind.min.css" rel="stylesheet">
+	<link href="{{relative_path}}assets/css/fonts.css" rel="stylesheet">
+	<link href="{{stylesheet_path}}" rel="stylesheet">
+	{{json_ld}}
+</head>
+<body class="bg-background text-primary font-body-light">
+
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<a href="#navigation" class="skip-link">Skip to navigation</a>
+<a href="#footer" class="skip-link">Skip to footer</a>
+
+<header id="navigation">
+	<div class="container max-w-screen-xl m-auto py-6 px-4 flex justify-between items-center">
+		<p class="text-3xl font-bold font-heading-bold"><a href="{{home_path}}" class="text-links">{{site_title}}</a></p>
+
+		<nav class="hidden md:block" aria-label="Primary">
+			<ul class="flex space-x-6">
+				{{navigation}}
+			</ul>
+		</nav>
+
+		<button
+			id="mobile-menu-open"
+			type="button"
+			class="md:hidden text-primary focus:outline-none focus:ring-2 focus:ring-links p-2"
+			aria-label="Open mobile menu"
+			aria-controls="mobile-navigation"
+			aria-expanded="false"
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-menu-2">
+				<path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+				<path d="M4 6l16 0" />
+				<path d="M4 12l16 0" />
+				<path d="M4 18l16 0" />
+			</svg>
+		</button>
+	</div>
+
+	<div id="mobile-menu-overlay" class="mobile-menu-overlay fixed inset-0 z-50 md:hidden" aria-hidden="true">
+		<div
+			class="mobile-menu-panel fixed inset-y-0 right-0 w-full max-w-sm shadow-xl"
+		>
+			<div class="flex flex-col h-full">
+				<div class="flex items-center justify-between px-6 py-4 border-b border-primary">
+					<h3 class="text-xl font-bold text-links">{{site_title}}</h3>
+					<button
+						id="mobile-menu-close"
+						type="button"
+						class="text-primary focus:outline-none focus:ring-2 focus:ring-links p-2"
+						aria-label="Close mobile menu"
+					>
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+						</svg>
+					</button>
+				</div>
+
+				<nav id="mobile-navigation" class="flex-1 px-6 py-6" aria-label="Mobile">
+					<ul class="space-y-4">
+						{{navigation}}
+					</ul>
+				</nav>
+			</div>
+		</div>
+	</div>
+</header>
+
+{{content}}
+
+<footer class="mt-10 py-6" id="footer">
+	<div class="container max-w-screen-xl m-auto px-4 site-footer-main">
+		<div class="site-footer-brand">
+			<p class="site-footer-kicker">Built with Kujo SSG</p>
+			<p class="site-footer-title">{{site_title}}</p>
+			<p class="site-footer-text">{{site_tagline}}</p>
+		</div>
+		<div class="site-footer-links-grid">
+			<div class="site-footer-column">
+				<h2 class="site-footer-heading">Product</h2>
+				<ul class="site-footer-links">
+					<li><a href="{{relative_path}}index.html">Home</a></li>
+					<li><a href="{{relative_path}}blog/">Blog</a></li>
+					<li><a href="{{relative_path}}storefronts/">Storefronts</a></li>
+				</ul>
+			</div>
+			<div class="site-footer-column">
+				<h2 class="site-footer-heading">Resources</h2>
+				<ul class="site-footer-links">
+					<li><a href="{{relative_path}}getting-started/">Getting Started</a></li>
+					<li><a href="{{relative_path}}about/">About</a></li>
+					<li><a href="{{relative_path}}contact/">Contact</a></li>
+				</ul>
+			</div>
+			<div class="site-footer-column">
+				<h2 class="site-footer-heading">Company</h2>
+				<ul class="site-footer-links">
+					<li><a href="{{relative_path}}sitemap.xml">Sitemap</a></li>
+					<li><a href="{{relative_path}}feed/index.xml">Feed</a></li>
+					<li><a href="{{relative_path}}robots.txt">Robots</a></li>
+				</ul>
+			</div>
+		</div>
+	</div>
+	<div class="site-footer-bar">
+		<div class="container max-w-screen-xl m-auto px-4">
+			<p class="site-footer-copyright">&copy; 2026 {{site_title}}. All rights reserved.</p>
+		</div>
+	</div>
+</footer>
+
+<script>
+(function() {
+	var open_button = document.getElementById('mobile-menu-open');
+	var close_button = document.getElementById('mobile-menu-close');
+	var overlay = document.getElementById('mobile-menu-overlay');
+	if (!open_button || !close_button || !overlay) {
+		return;
+	}
+
+	var set_menu_state = function(is_open) {
+		if (is_open) {
+			overlay.classList.add('is-open');
+			overlay.setAttribute('aria-hidden', 'false');
+			open_button.setAttribute('aria-expanded', 'true');
+			document.body.classList.add('mobile-menu-open');
+		} else {
+			overlay.classList.remove('is-open');
+			overlay.setAttribute('aria-hidden', 'true');
+			open_button.setAttribute('aria-expanded', 'false');
+			document.body.classList.remove('mobile-menu-open');
+		}
+	};
+
+	open_button.addEventListener('click', function() {
+		set_menu_state(true);
+	});
+
+	close_button.addEventListener('click', function() {
+		set_menu_state(false);
+	});
+
+	overlay.addEventListener('click', function(event) {
+		if (event.target === overlay) {
+			set_menu_state(false);
+		}
+	});
+
+	document.addEventListener('keydown', function(event) {
+		if ('Escape' == event.key) {
+			set_menu_state(false);
+		}
+	});
+
+	var nav_links = overlay.querySelectorAll('a');
+	nav_links.forEach(function(link) {
+		link.addEventListener('click', function() {
+			set_menu_state(false);
+		});
+	});
+})();
+</script>
+<script src="{{relative_path}}assets/js/docs.js"></script>
+
+</body>
+</html>
+
+<!-- cli-template-marker -->
+
+<!-- cli-template-marker -->
+
+<!-- cli-template-marker -->

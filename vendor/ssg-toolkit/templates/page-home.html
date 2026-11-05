@@ -1,0 +1,39 @@
+<section class="home-hero home-hero-full" role="banner" aria-label="Homepage hero">
+	<div class="home-hero-overlay">
+		<div class="home-hero-content container max-w-4xl m-auto px-4">
+			<p class="home-hero-kicker">Starter Site</p>
+			<h1 class="home-hero-title">{{title}}</h1>
+			<p class="home-hero-description">{{description}}</p>
+		</div>
+	</div>
+</section>
+<main class="container max-w-4xl m-auto pb-10 px-4" id="main-content">
+	<section class="home-featured-storefronts">
+		<h2 class="text-3xl font-bold font-heading-bold home-section-title mb-4">Featured Storefronts</h2>
+		<ul class="card-grid storefront-grid">{{featured_storefronts_html}}</ul>
+	</section>
+
+</main>
+
+<section class="home-featured-content" aria-labelledby="featured-content-title">
+	<div class="container max-w-4xl m-auto px-4 home-featured-content-inner">
+		<h2 id="featured-content-title" class="text-3xl font-bold font-heading-bold home-section-title mb-4">Featured Content</h2>
+		<ul class="card-grid featured-content-grid">{{featured_posts_html}}</ul>
+	</div>
+</section>
+
+<main class="container max-w-4xl m-auto pb-10 px-4">
+	<section class="home-cta" aria-labelledby="planning-call-title">
+		<div class="home-cta-grid">
+			<div>
+				<p class="home-cta-eyebrow">Planning + Architecture</p>
+				<h2 id="planning-call-title" class="home-cta-title">Book a planning call</h2>
+				<p class="home-cta-text">Align your templates, taxonomies, and publishing workflow in one focused session so implementation is clear before content migration starts.</p>
+			</div>
+			<div class="home-cta-actions">
+				<a href="/contact/" class="home-cta-button home-cta-button-primary">Book a planning call</a>
+				<a href="/getting-started/" class="home-cta-button home-cta-button-secondary">Review setup guide</a>
+			</div>
+		</div>
+	</section>
+</main>

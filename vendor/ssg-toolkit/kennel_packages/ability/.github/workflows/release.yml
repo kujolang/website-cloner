@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Install CI tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
+
+      - name: Install pinned Kujo runtime
+        id: kujo
+        uses: kujolang/kujo/.github/actions/setup-kujo@22582e7f0111a1005002579b44f5d03cd2ed1c9c
+        with:
+          version: v1.2.2
+
+      - name: Export Kujo runtime path
+        shell: bash
+        run: echo "KUJO_BIN=${{ steps.kujo.outputs.kujo-path }}" >> "$GITHUB_ENV"
+
+      - name: Install pinned Fence
+        shell: bash
+        run: |
+          set -euo pipefail
+          fence_dir="$RUNNER_TEMP/fence"
+          git clone --filter=blob:none https://github.com/kujolang/fence.git "$fence_dir"
+          git -C "$fence_dir" checkout --detach fc7a000ba837050bf8bffee6252835ef0ceb55a0
+          test "$(git -C "$fence_dir" rev-parse HEAD)" = "fc7a000ba837050bf8bffee6252835ef0ceb55a0"
+          echo "FENCE_SCRIPT=$fence_dir/fence.kujo" >> "$GITHUB_ENV"
+
+      - name: Verify tag and release gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' kennel.toml | head -1)"
+          test "$GITHUB_REF_NAME" = "v${version}"
+          bash scripts/verify-release.sh
+
+      - name: Build deterministic source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+          version="${GITHUB_REF_NAME#v}"
+          git archive --format=tar.gz --prefix="ability-${version}/" -o "dist/release/ability-v${version}.tar.gz" HEAD
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/release/ability-${{ github.ref_name }}.sbom.spdx.json
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist/release
+          sha256sum ability-* > SHA256SUMS
+          sha256sum --check SHA256SUMS
+
+      - name: Create keyless provenance attestations
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        with:
+          subject-path: |
+            dist/release/ability-*.tar.gz
+            dist/release/ability-*.sbom.spdx.json
+            dist/release/SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/release/* --verify-tag --generate-notes --title "Kujo Ability ${GITHUB_REF_NAME}"

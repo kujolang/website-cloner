@@ -1,0 +1,29 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.ssg.site.build",
+  "version": "1.0.0",
+  "description": "Build an SSG project into a bounded repository output directory.",
+  "input_schema": {
+    "type": "object",
+    "required": ["site_url", "output"],
+    "properties": {
+      "site_url": { "type": "string", "minLength": 1, "maxLength": 2048 },
+      "output": { "type": "string", "minLength": 1, "maxLength": 1024 },
+      "minify": { "type": "boolean" },
+      "drafts": { "type": "boolean" }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["built", "output"],
+    "properties": { "built": { "type": "boolean" }, "output": { "type": "string" } },
+    "additionalProperties": false
+  },
+  "effects": [
+    { "kind": "read", "resource": "kujo.ssg.project" },
+    { "kind": "write", "resource": "kujo.ssg.generated-output" },
+    { "kind": "external", "resource": "kujo.ssg.network" }
+  ],
+  "idempotency": { "mode": "keyed" }
+}

@@ -1,0 +1,12 @@
+<main class="container max-w-3xl m-auto py-10 px-4" id="main-content">
+	<article class="prose dark:prose-dark max-w-none kujo-content">
+		<p class="inline-block text-sm uppercase tracking-[0.12em] text-accent border border-primary px-3 py-1">Spotlight Post</p>
+		<h1 class="text-6xl font-bold mt-4 mb-4 text-links font-heading-bold">{{title}}</h1>
+		{{featured_image_html}}
+		<p class="text-2md mb-4 pb-2 text-accent italic border-b border-primary"><span>{{date}}</span> &middot; <span>{{author}}</span></p>
+		<div class="category-row">{{categories_html}}</div>
+		<div class="tag-row">{{tags_html}}</div>
+		{{taxonomies_html}}
+		{{body}}
+	</article>
+</main>

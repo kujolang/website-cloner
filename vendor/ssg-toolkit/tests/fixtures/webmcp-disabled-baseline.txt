@@ -1,0 +1,94 @@
+# Refreshed on 2026-10-12 after parser-based minification. Every other byte
+# matches the prior frozen baseline; see docs/audits/remaining-items-20261012.md.
+# Aggregate SHA-256 hashes are computed from sorted `<file-sha>  <relative-path>` lines.
+# The canonical site already exercises custom templates and custom collections.
+normal files=82 bytes=7418339 sha256=c84a8592c85d84cf49fec490168d16cac39399277c605b9ed43079631178032e
+minified files=82 bytes=7418339 sha256=c84a8592c85d84cf49fec490168d16cac39399277c605b9ed43079631178032e
+no-aux files=78 bytes=7408664 sha256=53a8b8bb555288e1dece5c2761f57d08df505a9bb2e6632acaa3108a383b6ac0
+no-index files=75 bytes=7363088 sha256=5ae7f89c0a19566f37527984e0f519b2ebfa31b85a7be32e4885d506b6ff909f
+posts-root files=82 bytes=7417575 sha256=24d945367fb4c6911ef349ca9e99ba28e466d99c03d848aea67c9fef98cacfdc
+parallel files=82 bytes=7418339 sha256=f83172cac9d6d4183ddd237daed2636adf3f8efdfa16be5379b57ced42c20bd2
+
+# Normal-build file list
+404.html
+about.html
+about/index.html
+assets/css/fonts.css
+assets/css/fonts.min.css
+assets/css/style.css
+assets/css/style.min.css
+assets/css/tailwind.min.css
+assets/fonts/bree-serif-latin-400.woff2
+assets/fonts/inter-latin-400.woff2
+assets/fonts/inter-latin-700.woff2
+assets/fonts/open-sans-latin.woff2
+assets/fonts/quicksand-latin.woff2
+assets/images/bg-hero.png
+assets/images/home-hero.jpg
+assets/images/post-ops-dashboard.jpg
+assets/images/post-starter-site.jpg
+assets/images/post-taxonomy-strategy.jpg
+assets/images/post-welcome-kujo-ssg.jpg
+assets/images/product-cargo-pant.jpg
+assets/images/product-heavyweight-tee.jpg
+assets/images/product-training-short.jpg
+assets/images/storefront-north-austin.jpg
+assets/images/storefront-pearl-district-portland.jpg
+assets/images/storefront-riverwalk-denver.jpg
+assets/js/alpine.min.js
+assets/js/docs.js
+assets/js/docs.min.js
+blog.html
+blog/2026-04-ops-dashboard.html
+blog/2026-04-ops-dashboard/index.html
+blog/designing-a-taxonomy-strategy.html
+blog/designing-a-taxonomy-strategy/index.html
+blog/index.html
+blog/page/2.html
+blog/page/2/index.html
+blog/shipping-a-starter-site-that-just-works.html
+blog/shipping-a-starter-site-that-just-works/index.html
+blog/welcome-to-kujo-ssg.html
+blog/welcome-to-kujo-ssg/index.html
+contact.html
+contact/index.html
+favicon.svg
+feed/index.xml
+getting-started.html
+getting-started/index.html
+images/post-ops-dashboard-f3b9fd9c4a15.webp
+images/post-starter-site-31aed68826a4.webp
+images/post-taxonomy-strategy-d4cc51195488.webp
+images/post-welcome-kujo-ssg-4938389ffb6f.webp
+images/product-cargo-pant-ee7a52fc7d5b.webp
+images/product-heavyweight-tee-2e841d5ccd29.webp
+images/product-training-short-dd624efb6d1d.webp
+images/storefront-north-austin-491f70b3cb23.webp
+images/storefront-pearl-district-portland-65eca54768aa.webp
+images/storefront-riverwalk-denver-b9e1497d992f.webp
+index.html
+llms.txt
+page/2.html
+page/2/index.html
+pants.html
+pants/cargo-pant.html
+pants/cargo-pant/index.html
+pants/index.html
+robots.txt
+shorts.html
+shorts/index.html
+shorts/training-short.html
+shorts/training-short/index.html
+sitemap.xml
+storefronts.html
+storefronts/index.html
+storefronts/north-austin.html
+storefronts/north-austin/index.html
+storefronts/pearl-district-portland.html
+storefronts/pearl-district-portland/index.html
+storefronts/riverwalk-denver.html
+storefronts/riverwalk-denver/index.html
+tshirts.html
+tshirts/heavyweight-tee.html
+tshirts/heavyweight-tee/index.html
+tshirts/index.html

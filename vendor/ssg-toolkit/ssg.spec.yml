@@ -1,0 +1,72 @@
+name: "SSG launch readiness review"
+goal: "Keep SSG locally release-ready as a deterministic Kujo-native static-site showcase with local build, validation, and release gates."
+version: "1.0.0"
+background: "SSG is part of the Kujo prelaunch matrix. The verified scope is local static-site generation from committed fixtures, generated-output validation, CLI contracts, and release-gate automation; it does not deploy or publish sites."
+scope: "Repository-local build behavior, generated output contracts, config precedence, DocGen bridge smoke coverage, release gate scripts, documentation truthfulness, and launch evidence capture."
+non_goals:
+  - "Deploying or publishing generated sites"
+  - "Publishing packages or public releases"
+  - "Pushing final release tags"
+  - "Claiming SEO, accessibility, performance, or production documentation-platform certification without target-environment proof"
+relevant_systems:
+  - "Kujo runtime"
+  - "SSG build entrypoint"
+  - "Generated-output validation scripts"
+  - "prelaunch launch evidence packet"
+likely_files:
+  - "README.md"
+  - "build.kujo"
+  - "kujo-ssg.yml"
+  - "templates/"
+  - "content/"
+  - "scripts/test-cli-contract.sh"
+  - "scripts/test-generated-contract.sh"
+  - "scripts/test-docs-contract.sh"
+  - "scripts/run_ci_checks.sh"
+  - "scripts/run_release_gate.sh"
+acceptance_criteria:
+  - "`kujo run ./build.kujo -- --site-url https://example.com` generates the starter site successfully."
+  - "`bash scripts/validate-generated-output.sh output` passes for generated output."
+  - "`bash scripts/test-cli-contract.sh` and `bash scripts/test-docs-contract.sh` pass."
+  - "`bash scripts/run_ci_checks.sh` and `bash scripts/run_release_gate.sh` pass on the local Kujo VM path."
+  - "Docs state that SSG is a local static-site showcase and do not imply deployment, hosted publishing, or production-certified docs-platform status."
+  - "ShipCheck and Concord pass locally, with ChangeBucket/PatchBrief evidence captured for meaningful launch-readiness changes."
+eval_requirements:
+  - description: "Run the SSG starter build."
+    check_type: "command"
+    params:
+      command: "kujo run ./build.kujo -- --site-url https://example.com"
+  - description: "Validate generated output."
+    check_type: "command"
+    params:
+      command: "bash scripts/validate-generated-output.sh output"
+  - description: "Run CLI contract tests."
+    check_type: "command"
+    params:
+      command: "bash scripts/test-cli-contract.sh"
+  - description: "Run docs contract tests."
+    check_type: "command"
+    params:
+      command: "bash scripts/test-docs-contract.sh"
+risks:
+  - risk: "Generated sites still need human review and target-environment proof before publication."
+    mitigation: "Keep release docs and central launch evidence explicit that local gates do not deploy or publish."
+    severity: "medium"
+  - risk: "Performance and accessibility claims can vary by content set and hosting target."
+    mitigation: "Limit launch scope to committed fixture output and local validation unless target proof is supplied."
+    severity: "medium"
+dependencies:
+  - "kujo on PATH or KUJO_BIN/KUJO_RUNTIME_DIR configured"
+  - "Bash 3.2+"
+review_expectations:
+  - "Review CLI output contracts and generated-output assertions before changing command output or route generation."
+  - "Review README and release docs for wording that implies hosted publishing, deployment, production certification, or guaranteed SEO/accessibility/performance outcomes."
+human_approval_points:
+  - "Before deploying or publishing generated sites"
+  - "Before publishing packages or public releases"
+  - "Before pushing final release tags"
+priority: "high"
+tags:
+  - "kujo"
+  - "ssg"
+  - "launch-readiness"

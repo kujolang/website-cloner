@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>{{page_title}}</title>
+	<meta name="description" content="{{meta_description}}">
+	<meta name="keywords" content="{{seo_keywords}}">
+	<meta name="author" content="{{author_meta}}">
+	{{canonical_tag}}
+	{{favicon_tag}}
+	{{rss_link_tag}}
+	<meta property="og:title" content="{{seo_title}}">
+	<meta property="og:description" content="{{seo_description}}">
+	<meta property="og:url" content="{{og_url}}">
+	<meta property="og:type" content="{{og_type}}">
+	<meta property="og:site_name" content="{{site_title}}">
+	<meta property="og:locale" content="{{og_locale}}">
+	{{og_image_tag}}
+	{{og_article_tags}}
+	<meta name="twitter:card" content="summary_large_image">
+	<meta name="twitter:title" content="{{seo_title}}">
+	<meta name="twitter:description" content="{{seo_description}}">
+	{{twitter_image_tag}}
+	<link href="{{relative_path}}assets/css/fonts.css" rel="stylesheet">
+	<link href="{{stylesheet_path}}" rel="stylesheet">
+	{{json_ld}}
+</head>
+<body>
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<header class="docs-topbar" id="navigation">
+	<a class="docs-brand" href="{{home_path}}">{{site_title}}</a>
+	<label class="docs-search-shell">
+		<span class="sr-only">Search documentation</span>
+		<input id="docs-search" type="search" placeholder="Search docs" autocomplete="off">
+	</label>
+</header>
+<div id="docs-search-results" class="docs-search-results" aria-live="polite"></div>
+{{content}}
+<footer class="docs-footer" id="footer">
+	<p>{{site_tagline}}</p>
+	<p><a href="{{relative_path}}sitemap.xml">Sitemap</a> <a href="{{relative_path}}llms.txt">llms.txt</a></p>
+</footer>
+<script src="{{relative_path}}assets/js/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+import test from'node:test';import assert from'node:assert/strict';import{calendarListPage}from'../scripts/calendar-list.mjs';
+const event=(n,date,end=date)=>({route:'/event/'+n+'/',start:date+' 10:00:00',end:end+' 12:00:00',title:String(n)}),manifest={schema:'website-cloner-calendar/v1',events:[event(4,'2028-10-29'),event(1,'2028-03-11','2028-03-13'),event(3,'2028-07-31'),event(2,'2028-06-17')]};
+test('list pages preserve date filtering, native event order and final-page bounds',()=>{
+ const first=calendarListPage(manifest,'2028-01-01',2),last=calendarListPage(manifest,'2028-01-01',2,2);assert.deepEqual(first.entries.map(e=>e.route),['/event/1/','/event/2/']);assert.deepEqual([first.start,first.end,first.showEnd,first.hasPrevious,first.hasNext],['2028-01-01','2028-06-17',true,false,true]);assert.deepEqual(last.entries.map(e=>e.route),['/event/3/','/event/4/']);assert.deepEqual([last.start,last.end,last.showEnd,last.hasPrevious,last.hasNext],['2028-07-31','2028-10-29',false,true,false]);
+ assert.equal(calendarListPage(manifest,'2028-07-01',2).pages,1);assert.equal(calendarListPage(manifest,'2029-01-01',2).entries.length,0);assert.equal(calendarListPage(manifest,'2028-01-01',2,99).page,2);assert.equal(calendarListPage(manifest,'2028-03-12',2).entries[0].route,'/event/1/');
+ for(const value of [0,-1,1.5,NaN,Infinity,'2'])assert.throws(()=>calendarListPage(manifest,'2028-01-01',2,value));for(const value of [0,-1,1.5,NaN,Infinity,1001])assert.throws(()=>calendarListPage(manifest,'2028-01-01',value));
+ const ongoing={schema:manifest.schema,events:[event(1,'2028-03-01','2028-03-20'),event(2,'2028-03-02','2028-03-20'),event(3,'2028-03-15')]};const span=calendarListPage(ongoing,'2028-03-10',2);assert.equal(span.end,'2028-03-10');assert.equal(span.showEnd,false);
+ const same={schema:manifest.schema,events:[event(1,'2028-03-11'),event(2,'2028-03-11'),event(3,'2028-04-01')]};assert.equal(calendarListPage(same,'2028-01-01',2).showEnd,false);
+});

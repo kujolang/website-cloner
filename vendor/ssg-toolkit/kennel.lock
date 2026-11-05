@@ -1,0 +1,19 @@
+generated_at = "2026-09-02 06:54:43"
+generated_by = "kennel"
+version = 1
+
+[[package]]
+checksum = ""
+install_path = "kennel_packages/ability"
+kind = "github"
+name = "ability"
+path = ""
+repository = "https://github.com/kujolang/ability.git"
+requested = "be093e62bc93e5ec01e99e7da16c5657507ac820"
+requested_kind = "commit"
+resolved_commit = "be093e62bc93e5ec01e99e7da16c5657507ac820"
+resolved_ref = "be093e62bc93e5ec01e99e7da16c5657507ac820"
+signature = ""
+signing_key = ""
+source = "github:kujolang/ability"
+version = "1.0.1"

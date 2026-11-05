@@ -1,0 +1,26 @@
+{
+  "runtime": "kujo 1.5.0 VM",
+  "command": "kujo run build.kujo -- --inspect-config",
+  "runs_seconds": [
+    0.5897195489960723,
+    0.5931469119968824,
+    0.5904432389652357,
+    0.5838677940191701,
+    0.5811053049983457
+  ],
+  "median_seconds": 0.5897195489960723,
+  "stdout_bytes": 180,
+  "stderr_bytes": 0,
+  "receipt": {
+    "ok": true,
+    "schema_version": "kujo-ssg-config/v1",
+    "settings": {
+      "assets": "assets",
+      "content": "content",
+      "output": "output",
+      "site_url": "https://demo.kujo.local",
+      "templates": "templates"
+    }
+  },
+  "caveat": "New read-only capability, no before equivalent; concurrent verification on same host, not a throughput claim."
+}

@@ -1,0 +1,187 @@
+from ability import ABILITY_BINDING_SCHEMA_ID, ABILITY_EXPOSURE_SCHEMA_ID, ABILITY_INVOCATION_SCHEMA_ID, create_ability_registry, register_ability_definition, register_ability_binding, register_ability_exposure, execute_ability
+
+func failure(code, message, details) { return {"ok": false, "status": 422, "code": code, "message": message, "details": details} }
+
+func safe_relative_path(value) {
+	raw := trim(to_string(value))
+	if raw == "" || len(raw) > 1024 || starts_with(raw, "/") || contains(raw, "\\") || contains(raw, ":") { return false }
+	for part in split(raw, "/") { if part == "" || part == "." || part == ".." { return false } }
+	return true
+}
+
+func run_inspect(root) {
+	return {"ok": true, "result": {
+		"version": "1.2.0",
+		"configuration": "kujo-ssg.yml",
+		"content_exists": path_is_dir(path_join(root, "content")),
+		"output_exists": path_is_dir(path_join(root, "output"))
+	}}
+}
+
+func run_validate(root, input) {
+	output := trim(to_string(input["output"]))
+	if safe_relative_path(output) == false { return failure("invalid_output_path", "output must be a contained relative path", {}) }
+	result := spawn_process(["bash", "scripts/validate-generated-output.sh", output], {"cwd": root, "timeout_ms": 120000, "max_output_bytes": 1048576})
+	if result.exitcode != 0 { return failure("ssg_validation_failed", "Generated output did not pass validation", {"exitcode": result.exitcode}) }
+	return {"ok": true, "result": {"valid": true, "output": output}}
+}
+
+func valid_site_url(value) {
+	url := trim(to_string(value))
+	if len(url) < 8 || len(url) > 2048 { return false }
+	if contains(url, "@") || contains(url, "\\") || regex_replace(url, "\\s", "") != url { return false }
+	parts := split(url, "://")
+	if len(parts) != 2 || (parts[0] != "https" && parts[0] != "http") { return false }
+	authority := split(parts[1], "/")[0]
+	if authority == "" { return false }
+	host_parts := split(authority, ":")
+	if len(host_parts) > 2 || host_parts[0] == "" { return false }
+	if regex_replace(host_parts[0], "^[A-Za-z0-9.-]+$", "") != "" { return false }
+	if len(host_parts) == 2 {
+		port := host_parts[1]
+		if port == "" || len(port) > 5 || regex_replace(port, "^[0-9]+$", "") != "" { return false }
+		port_number := to_int(port)
+		if port_number < 1 || port_number > 65535 { return false }
+	}
+	if parts[0] == "http" && host_parts[0] != "localhost" && host_parts[0] != "127.0.0.1" { return false }
+	return true
+}
+
+func run_build(root, kujo_bin, input) {
+	output := trim(to_string(input["output"]))
+	site_url := trim(to_string(input["site_url"]))
+	if safe_relative_path(output) == false { return failure("invalid_output_path", "output must be a contained relative path", {}) }
+	if valid_site_url(site_url) == false { return failure("invalid_site_url", "site_url must use HTTPS unless it is loopback", {}) }
+	command := [kujo_bin, "run", "build.kujo", "--", "--site-url", site_url, "--output", output]
+	if has_key(input, "minify") && input["minify"] == true { command = push(command, "--minify") }
+	if has_key(input, "drafts") && input["drafts"] == true { command = push(command, "--drafts") }
+	result := spawn_process(command, {"cwd": root, "timeout_ms": 300000, "max_output_bytes": 1048576})
+	if result.exitcode != 0 { return failure("ssg_build_failed", "SSG build failed", {"exitcode": result.exitcode}) }
+	return {"ok": true, "result": {"built": true, "output": output}}
+}
+
+func run_build_shards(root, kujo_bin, input) {
+	output := trim(to_string(input["output"]))
+	site_url := trim(to_string(input["site_url"]))
+	shards := input["shards"]
+	concurrency := input["concurrency"]
+	if safe_relative_path(output) == false { return failure("invalid_output_path", "output must be a contained relative path", {}) }
+	if valid_site_url(site_url) == false { return failure("invalid_site_url", "site_url must use HTTPS unless it is loopback", {}) }
+	if type(shards) != "int" || shards < 1 || shards > 64 || type(concurrency) != "int" || concurrency < 1 || concurrency > 32 { return failure("invalid_shard_configuration", "shards and concurrency exceed the supported bounds", {}) }
+	result := spawn_process(["bash", "scripts/build-parallel.sh", to_string(shards), to_string(concurrency), "--site-url", site_url, "--output", output], {"cwd": root, "inherit_env": true, "env": {"KUJO_BIN": kujo_bin}, "timeout_ms": 300000, "max_output_bytes": 1048576})
+	if result.exitcode != 0 { return failure("ssg_sharded_build_failed", "SSG sharded build failed", {"exitcode": result.exitcode}) }
+	return {"ok": true, "result": {"built": true, "output": output, "shards": shards}}
+}
+
+func run_helper(root, operation, arguments) {
+	command := ["python3", "scripts/ability-inspect.py", operation]
+	for argument in arguments { command = push(command, argument) }
+	result := spawn_process(command, {"cwd": root, "timeout_ms": 120000, "max_output_bytes": 1048576})
+	payload := null
+	parse_error := null
+	try { payload = parse_json(trim(result.stdout)) } except e { parse_error = e }
+	if result.exitcode != 0 {
+		if type(payload) == "dict" && has_key(payload, "code") { return failure(payload["code"], payload["message"], {"details": payload["details"]}) }
+		return failure("ssg_helper_failed", "SSG bounded inspection helper failed", {"exitcode": result.exitcode})
+	}
+	if type(parse_error) != "null" || type(payload) != "dict" { return failure("ssg_helper_invalid_output", "SSG bounded inspection helper returned invalid output", {}) }
+	return {"ok": true, "result": payload}
+}
+
+func handler_for(definition, root, kujo_bin) {
+	id := definition["id"]
+	if id == "kujo.ssg.site.inspect" { return func(input, context) { return run_inspect(root) } }
+	if id == "kujo.ssg.site.validate" { return func(input, context) { return run_validate(root, input) } }
+	if id == "kujo.ssg.site.build" { return func(input, context) { return run_build(root, kujo_bin, input) } }
+	if id == "kujo.ssg.content.list" { return func(input, context) { return run_helper(root, "source-list", []) } }
+	if id == "kujo.ssg.content.validate" { return func(input, context) { return run_helper(root, "source-validate", []) } }
+	if id == "kujo.ssg.site.build-shards" { return func(input, context) { return run_build_shards(root, kujo_bin, input) } }
+	if id == "kujo.ssg.output.inspect" { return func(input, context) { return run_helper(root, "output-inspect", [input["output"]]) } }
+	if id == "kujo.ssg.output.compare" { return func(input, context) { return run_helper(root, "output-compare", [input["left"], input["right"]]) } }
+	if id == "kujo.ssg.deployment.readiness" { return func(input, context) { return run_helper(root, "readiness", [input["output"]]) } }
+	if id == "kujo.ssg.artifact.export" { return func(input, context) { return run_helper(root, "export", [input["output"], input["artifact"]]) } }
+	return func(input, context) { return failure("ssg_ability_handler_missing", "SSG Ability handler is not implemented", {}) }
+}
+
+export create_ssg_ability_registry := func(root_input, kujo_bin_input) {
+	root := trim(to_string(root_input))
+	kujo_bin := trim(to_string(kujo_bin_input))
+	if root == "" || path_is_dir(root) == false { return failure("invalid_ssg_root", "SSG root must be an existing directory", {}) }
+	if kujo_bin == "" { return failure("invalid_kujo_binary", "Kujo binary path is required", {}) }
+	registry := create_ability_registry()
+	files := [
+		"kujo.ssg.site.inspect.json",
+		"kujo.ssg.content.list.json",
+		"kujo.ssg.content.validate.json",
+		"kujo.ssg.site.validate.json",
+		"kujo.ssg.site.build.json",
+		"kujo.ssg.site.build-shards.json",
+		"kujo.ssg.output.inspect.json",
+		"kujo.ssg.output.compare.json",
+		"kujo.ssg.deployment.readiness.json",
+		"kujo.ssg.artifact.export.json"
+	]
+	for file in files {
+		definition := parse_json(read_file(path_join(path_join(root, "abilities"), file)))
+		step := register_ability_definition(registry, definition)
+		if step["ok"] == false { return step }
+		registry = step["registry"]
+		binding := {
+			"schema": ABILITY_BINDING_SCHEMA_ID,
+			"ability_id": definition["id"],
+			"ability_version": definition["version"],
+			"handler_id": definition["id"] + ".local",
+			"handler_version": "1.0.0",
+			"handler": handler_for(definition, root, kujo_bin),
+			"result_mode": "kujo.result/v1",
+			"timeout_ms": 300000,
+			"metadata": {"root": root}
+		}
+		step = register_ability_binding(registry, binding)
+		if step["ok"] == false { return step }
+		registry = step["registry"]
+		exposure := {
+			"schema": ABILITY_EXPOSURE_SCHEMA_ID,
+			"ability_id": definition["id"],
+			"ability_version": definition["version"],
+			"surface": "sdk",
+			"name": definition["id"],
+			"enabled": true,
+			"public": false,
+			"metadata": {"pack": "kujo.ssg.core"}
+		}
+		step = register_ability_exposure(registry, exposure)
+		if step["ok"] == false { return step }
+		registry = step["registry"]
+	}
+	return {"ok": true, "registry": registry}
+}
+
+export make_ssg_ability_invocation := func(definition, input, invocation_id, idempotency_key) {
+	return {
+		"schema": ABILITY_INVOCATION_SCHEMA_ID,
+		"invocation_id": invocation_id,
+		"ability_id": definition["id"],
+		"ability_version": definition["version"],
+		"definition_digest": "",
+		"input": input,
+		"principal": {"type": "workload", "id": "kujo-ssg-local", "tenant_id": "local", "claims": {}},
+		"request_id": invocation_id,
+		"trace_id": invocation_id,
+		"surface": "sdk",
+		"idempotency_key": idempotency_key,
+		"approval": {},
+		"metadata": {"pack": "kujo.ssg.core"}
+	}
+}
+
+export execute_ssg_ability := func(registry, invocation, services) { return execute_ability(registry, invocation, services) }
+
+export ssg_ability_policy := func(definition, invocation, exposure) {
+	for effect in definition["effects"] {
+		if effect["kind"] != "read" {
+			return {"schema": "kujo.ability.policy-decision/v1", "decision_id": "ssg-local-approval", "outcome": "approval_required", "reason": "SSG writes and external effects require explicit approval.", "requirements": ["human"], "policy_id": "kujo.ssg.local", "policy_version": "1.0.0"}
+		}
+	}
+	return {"schema": "kujo.ability.policy-decision/v1", "decision_id": "ssg-local-read", "outcome": "allow", "reason": "Bounded local read is allowed.", "requirements": [], "policy_id": "kujo.ssg.local", "policy_version": "1.0.0"}
+}

@@ -1,0 +1,5217 @@
+# Kujo Static Site Generator
+# Native Kujo implementation with full parity-focused feature set.
+
+VERSION := "1.2.0"
+
+func print_lines(lines) {
+	i := 0
+	loop {
+		if i >= len(lines) {
+			break
+		}
+
+		print(lines[i])
+		i := i + 1
+	}
+}
+
+func print_help() {
+	print_lines([
+		"Usage: kujo run ./build.kujo [options]",
+		"",
+		"Site build options:",
+		"  --output <dir>                Output directory (default: output)",
+		"  --content <dir>               Content directory (default: content)",
+		"  --templates <dir>             Templates directory (default: templates)",
+		"  --assets <dir>                Assets directory (default: assets)",
+		"  --posts-per-page <n>          Pagination size (default: 5)",
+		"  --sort-by <date|title|author|order>",
+		"  --fonts <comma,list>          Google fonts list",
+		"  --site-title <text>",
+		"  --site-tagline <text>",
+		"  --site-url <url>",
+		"  --robots <public|private>",
+		"  --llms <public|private>",
+		"  --watch                       Reserved (not implemented)",
+		"  --minify                      Generate minified CSS/JS",
+		"  --download-remote-images      Download remote featured images",
+		"  --allow-private-remote-images Allow loopback/private remote image URLs",
+		"  --drafts                      Include draft content (preview builds)",
+		"  --webmcp                     Enable experimental static WebMCP tools (default)",
+		"  --no-webmcp                  Disable experimental static WebMCP tools",
+		"  --blog-slug <slug>            Blog root slug (default: blog)",
+		"  --posts-at-root               Keep post permalinks at /<slug>/",
+		"  --init <yml|yaml|json>        Bootstrap starter project",
+		"  --inspect-config              Print resolved paths/site URL as JSON; do not build",
+		"  --version                     Print version and exit",
+		"  --help                        Show this help and exit",
+		"",
+		"Benchmark compatibility options:",
+		"  --no-index                    Skip index/blog listing pages",
+		"  --no-aux                      Skip feed/sitemap/robots/llms generation",
+		"  --no-aliases                  Skip flat .html redirect aliases (clean URLs only)"
+	])
+}
+
+func default_settings() {
+	return {
+		"output": "output",
+		"content": "content",
+		"templates": "templates",
+		"assets": "assets",
+		"posts_per_page": 5,
+		"sort_by": "date",
+		"fonts": ["Bree Serif", "Inter"],
+		"site_title": "My Static Site",
+		"site_tagline": "Built with Kujo SSG",
+		"site_url": "",
+		"robots": "public",
+		"llms": "public",
+		"watch": false,
+		"minify": false,
+		"download_remote_images": false,
+		"allow_private_remote_images": false,
+		"drafts": false,
+		"webmcp": true,
+		"blog_slug": "blog",
+		"posts_at_root": false,
+		"no_index": false,
+		"no_aux": false,
+		"no_aliases": false,
+		"phase": "full",
+		"shard": 0,
+		"shards": 1
+	}
+}
+
+func parse_bool_value(value, fallback) {
+	if value == null {
+		return fallback
+	}
+	if is_bool(value) {
+		return value
+	}
+	if is_int(value) {
+		return value != 0
+	}
+	if is_string(value) {
+		lowered := to_lower(trim(value))
+		if lowered == "true" || lowered == "1" || lowered == "yes" || lowered == "on" {
+			return true
+		}
+		if lowered == "false" || lowered == "0" || lowered == "no" || lowered == "off" {
+			return false
+		}
+	}
+	return fallback
+}
+
+func parse_int_value(value, fallback) {
+	if value == null {
+		return fallback
+	}
+	if is_int(value) {
+		return value
+	}
+	if is_float(value) {
+		return to_int(value)
+	}
+	if is_string(value) {
+		try {
+			return to_int(trim(value))
+		} except err {
+			return fallback
+		}
+	}
+	return fallback
+}
+
+func is_integer_text(value) {
+	text := trim(to_string(value))
+	if len(text) == 0 {
+		return false
+	}
+
+	start_index := 0
+	first_char := substring(text, 0, 1)
+	if first_char == "+" || first_char == "-" {
+		if len(text) == 1 {
+			return false
+		}
+		start_index := 1
+	}
+
+	i := start_index
+	loop {
+		if i >= len(text) {
+			break
+		}
+
+		char := substring(text, i, i + 1)
+		if index_of("0123456789", char) < 0 {
+			return false
+		}
+
+		i := i + 1
+	}
+
+	return true
+}
+
+func trim_quotes(value) {
+	clean := trim(value)
+	if len(clean) >= 2 {
+		if starts_with(clean, "\"") && ends_with(clean, "\"") {
+			clean := substring(clean, 1, len(clean) - 1)
+		}
+		if starts_with(clean, "'") && ends_with(clean, "'") {
+			clean := substring(clean, 1, len(clean) - 1)
+		}
+	}
+	return trim(clean)
+}
+
+func option_inline_value(token, flag) {
+	prefix := flag + "="
+	if starts_with(token, prefix) {
+		return substring(token, len(prefix), len(token))
+	}
+	return null
+}
+
+func string_in_list(value, allowed_values) {
+	i := 0
+	loop {
+		if i >= len(allowed_values) {
+			break
+		}
+
+		if value == allowed_values[i] {
+			return true
+		}
+
+		i := i + 1
+	}
+
+	return false
+}
+
+func is_valid_bool_input(value) {
+	if value == null {
+		return true
+	}
+	if is_bool(value) || is_int(value) {
+		return true
+	}
+	if is_string(value) {
+		lowered := to_lower(trim(value))
+		return lowered == "true" || lowered == "1" || lowered == "yes" || lowered == "on" || lowered == "false" || lowered == "0" || lowered == "no" || lowered == "off"
+	}
+	return false
+}
+
+func print_errors(errors) {
+	i := 0
+	loop {
+		if i >= len(errors) {
+			break
+		}
+
+		print("Error: " + to_string(errors[i]))
+		i := i + 1
+	}
+}
+
+func safe_error_text(err) {
+	try {
+		return to_string(err)
+	} except nested_err {
+		return "unknown error"
+	}
+}
+
+func ensure_dir(path) {
+	clean_path := trim(path)
+	if len(clean_path) == 0 || clean_path == "." {
+		return null
+	}
+
+	# create_dir is recursive (create_dir_all at the runtime boundary), so a
+	# single call avoids repeated interpreter loop frames for large docs sites.
+	create_dir(clean_path)
+}
+
+func ensure_dirs(paths) {
+	i := 0
+	loop {
+		if i >= len(paths) {
+			break
+		}
+
+		ensure_dir(paths[i])
+		i := i + 1
+	}
+}
+
+func write_if_missing(path, content) {
+	if path_exists(path) {
+		return null
+	}
+	parent := dirname(path)
+	if len(parent) > 0 {
+		ensure_dir(parent)
+	}
+	write_file(path, content)
+}
+
+func write_seed_files(files) {
+	i := 0
+	loop {
+		if i >= len(files) {
+			break
+		}
+
+		file := files[i]
+		write_if_missing(file["path"], file["content"])
+		i := i + 1
+	}
+}
+
+func normalize_route(route) {
+	clean := trim(route)
+	if len(clean) == 0 {
+		return ""
+	}
+	if starts_with(clean, "/") {
+		clean := substring(clean, 1, len(clean))
+	}
+	if !ends_with(clean, "/") {
+		clean := clean + "/"
+	}
+	return clean
+}
+
+func route_depth(route) {
+	clean := normalize_route(route)
+	if len(clean) == 0 {
+		return 0
+	}
+	parts := split(clean, "/")
+	count := 0
+	part_idx := 0
+	loop {
+		if part_idx >= len(parts) {
+			break
+		}
+
+		part := parts[part_idx]
+		part_idx := part_idx + 1
+		if len(trim(part)) > 0 {
+			count := count + 1
+		}
+	}
+	return count
+}
+
+func route_prefix(route) {
+	depth := route_depth(route)
+	prefix := ""
+	i := 0
+	loop {
+		if i >= depth {
+			break
+		}
+		prefix := prefix + "../"
+		i := i + 1
+	}
+	return prefix
+}
+
+func clean_slug(text) {
+	slug := to_lower(trim(text))
+	slug := regex_replace(slug, "[^a-z0-9]+", "-")
+	slug := regex_replace(slug, "^-+|-+$", "")
+	if len(slug) == 0 {
+		return "untitled"
+	}
+	return slug
+}
+
+func custom_slug_override(meta) {
+	candidate := trim(to_string(meta["custom_url"]))
+	if len(candidate) == 0 {
+		return ""
+	}
+	if contains(candidate, "/") {
+		return ""
+	}
+	lowered := to_lower(candidate)
+	if ends_with(lowered, ".jpg") || ends_with(lowered, ".jpeg") || ends_with(lowered, ".png") || ends_with(lowered, ".gif") || ends_with(lowered, ".webp") {
+		return ""
+	}
+	return clean_slug(candidate)
+}
+
+func template_override_name(value, source_file) {
+	candidate := trim(to_string(value))
+	if len(candidate) == 0 {
+		return ""
+	}
+	invalid := regex_replace(candidate, "[a-zA-Z0-9_-]+", "")
+	if len(candidate) > 80 || len(invalid) > 0 {
+		print("Warning: Ignored unsafe template override in " + source_file + ": " + candidate)
+		return ""
+	}
+	return candidate
+}
+
+func markdown_files(directory) {
+	files := []
+	if path_exists(directory) && path_is_symlink(directory) {
+		print("Warning: Skipped symlink while scanning content: " + directory)
+		return files
+	}
+	if !path_exists(directory) || !path_is_dir(directory) {
+		return files
+	}
+	entries := sort(list_dir(directory))
+	entry_idx := 0
+	loop {
+		if entry_idx >= len(entries) {
+			break
+		}
+
+		entry := entries[entry_idx]
+		entry_idx := entry_idx + 1
+		full_path := path_join(directory, entry)
+		if path_is_symlink(full_path) {
+			print("Warning: Skipped symlink while scanning content: " + full_path)
+			continue
+		}
+		if path_is_dir(full_path) && starts_with(entry, ".") == false {
+			child_files := markdown_files(full_path)
+			child_idx := 0
+			loop {
+				if child_idx >= len(child_files) {
+					break
+				}
+				files = push(files, child_files[child_idx])
+				child_idx := child_idx + 1
+			}
+		}
+		if path_is_file(full_path) && ends_with(entry, ".md") {
+			files = push(files, full_path)
+		}
+	}
+	return files
+}
+
+func to_string_array(value) {
+	out := []
+	if value == null {
+		return out
+	}
+	if is_array(value) {
+		item_idx := 0
+		loop {
+			if item_idx >= len(value) {
+				break
+			}
+
+			item := value[item_idx]
+			item_idx := item_idx + 1
+			clean := trim_quotes(to_string(item))
+			if len(clean) > 0 {
+				out = push(out, clean)
+			}
+		}
+		return out
+	}
+
+	text := trim(to_string(value))
+	if len(text) == 0 {
+		return out
+	}
+	if starts_with(text, "[") && ends_with(text, "]") && len(text) >= 2 {
+		text := substring(text, 1, len(text) - 1)
+	}
+	parts := split(text, ",")
+	part_idx := 0
+	loop {
+		if part_idx >= len(parts) {
+			break
+		}
+
+		part := parts[part_idx]
+		part_idx := part_idx + 1
+		clean := trim_quotes(part)
+		if len(clean) > 0 {
+			out = push(out, clean)
+		}
+	}
+	return out
+}
+
+func push_unique_string(values, value) {
+	needle := trim(to_string(value))
+	if len(needle) == 0 {
+		return values
+	}
+	needle_key := to_lower(needle)
+	i := 0
+	loop {
+		if i >= len(values) {
+			break
+		}
+		if to_lower(trim(to_string(values[i]))) == needle_key {
+			return values
+		}
+		i := i + 1
+	}
+	return push(values, needle)
+}
+
+func merge_unique_strings(left, right) {
+	out := left
+	i := 0
+	loop {
+		if i >= len(right) {
+			break
+		}
+		out = push_unique_string(out, right[i])
+		i := i + 1
+	}
+	return out
+}
+
+func normalize_taxonomies_map(value) {
+	out := {}
+	if !is_dict(value) {
+		return out
+	}
+
+	taxonomy_keys := keys(value)
+	i := 0
+	loop {
+		if i >= len(taxonomy_keys) {
+			break
+		}
+		raw_key := taxonomy_keys[i]
+		i := i + 1
+
+		taxonomy_name := clean_slug(raw_key)
+		if taxonomy_name == "untitled" {
+			continue
+		}
+		terms := to_string_array(value[raw_key])
+		if len(terms) > 0 {
+			out[taxonomy_name] = terms
+		}
+	}
+
+	return out
+}
+
+func inline_markdown(text) {
+	out := text
+	# Cheap substring guards avoid recompiling/running the inline regexes on the
+	# overwhelmingly common case of plain prose lines (large-site hot path).
+	if index_of(out, "![") >= 0 {
+		out := regex_replace(out, "!\\[([^\\]]*)\\]\\(([^\\)]+)\\)", "<img src=\"$2\" alt=\"$1\">")
+	}
+	if index_of(out, "[") >= 0 {
+		out := regex_replace(out, "\\[([^\\]]+)\\]\\(([^\\)]+)\\)", "<a href=\"$2\">$1</a>")
+	}
+	if index_of(out, "**") >= 0 {
+		out := regex_replace(out, "\\*\\*([^\\*]+)\\*\\*", "<strong>$1</strong>")
+	}
+	if index_of(out, "*") >= 0 {
+		out := regex_replace(out, "\\*([^\\*]+)\\*", "<em>$1</em>")
+	}
+	if index_of(out, "`") >= 0 {
+		out := regex_replace(out, "`([^`]+)`", "<code>$1</code>")
+	}
+	return out
+}
+
+func fenced_code_paragraph_text(line) {
+	clean := trim(line)
+	if starts_with(clean, "<p>") && ends_with(clean, "</p>") && len(clean) >= 7 {
+		return substring(clean, 3, len(clean) - 4)
+	}
+	return line
+}
+
+func fenced_code_block_html(language, code_lines) {
+	class_attr := ""
+	language_slug := clean_slug(language)
+	if len(language_slug) > 0 && language_slug != "untitled" {
+		class_attr = " class=\"language-" + html_escape(language_slug) + "\""
+	}
+	return "<pre><code" + class_attr + ">" + join(code_lines, "\n") + "</code></pre>"
+}
+
+func normalize_fenced_code_html(html) {
+	if index_of(html, "```") < 0 {
+		return html
+	}
+
+	lines := split(html, "\n")
+	out := []
+	code_lines := []
+	in_code := false
+	code_language := ""
+	i := 0
+	loop {
+		if i >= len(lines) {
+			break
+		}
+
+		line := lines[i]
+		i := i + 1
+		paragraph_text := trim(fenced_code_paragraph_text(line))
+		if starts_with(paragraph_text, "```") {
+			if in_code {
+				out = push(out, fenced_code_block_html(code_language, code_lines))
+				code_lines := []
+				code_language := ""
+				in_code := false
+			} else {
+				code_language = trim(substring(paragraph_text, 3, len(paragraph_text)))
+				code_lines := []
+				in_code := true
+			}
+			continue
+		}
+
+		if in_code {
+			code_lines = push(code_lines, fenced_code_paragraph_text(line))
+		} else {
+			out = push(out, line)
+		}
+	}
+
+	if in_code {
+		out = push(out, fenced_code_block_html(code_language, code_lines))
+	}
+
+	return join(out, "\n")
+}
+
+# Delegates to the native markdown renderer (compiled once, byte-identical to
+# the previous interpreted implementation). Fenced code blocks are normalized
+# afterward because the native renderer intentionally preserves the legacy
+# paragraph behavior for triple-backtick lines.
+func markdown_to_html(markdown) {
+	return normalize_fenced_code_html(render_markdown(markdown))
+}
+
+func excerpt_from_markdown(markdown) {
+	html := markdown_to_html(markdown)
+	plain := regex_replace(html, "<[^>]+>", " ")
+	plain := regex_replace(plain, "\\s+", " ")
+	plain := trim(plain)
+	if len(plain) == 0 {
+		return ""
+	}
+
+	words := split(plain, " ")
+	if len(words) <= 30 {
+		return plain
+	}
+	out := []
+	i := 0
+	loop {
+		if i >= len(words) || i >= 30 {
+			break
+		}
+		out = push(out, words[i])
+		i := i + 1
+	}
+	return join(out, " ") + "..."
+}
+
+func parse_frontmatter(content, source_file) {
+	meta := {
+		"title": "",
+		"author": "",
+		"date": "",
+		"category": "",
+		"description": "",
+		"keywords": "",
+		"seo_title": "",
+		"seo_description": "",
+		"lang": "en",
+		"canonical": "",
+		"featured_image": "",
+		"custom_url": "",
+			"template": "",
+			"draft": false,
+			"order": 1000,
+			"excerpt": "",
+			"nav_hide": false,
+			"nav_title": "",
+			"section": "",
+			"audience": "",
+			"difficulty": "",
+			"status": "",
+			"version": "",
+			"prerequisites": [],
+			"previous": "",
+			"next": "",
+			"last_updated": "",
+			"search_exclude": false,
+			"tags": [],
+			"categories": [],
+			"taxonomies": {}
+		}
+	body := trim(content)
+
+	# Only complete delimiter lines delimit frontmatter. This preserves literal
+	# `---` text in quoted YAML values and in the Markdown body.
+	lines := split(content, "\n")
+	if len(lines) > 0 && trim(lines[0]) == "---" {
+		closing_line := 0
+		has_closing_delimiter := false
+		idx := 1
+		loop {
+			if idx >= len(lines) {
+				break
+			}
+			if trim(lines[idx]) == "---" {
+				closing_line = idx
+				has_closing_delimiter = true
+				break
+			}
+			idx := idx + 1
+		}
+
+		if !has_closing_delimiter {
+			print("Warning: Unclosed frontmatter delimiter in " + source_file + " (line 1).")
+		} else {
+			frontmatter_lines := []
+			idx := 1
+			loop {
+				if idx >= closing_line {
+					break
+				}
+				frontmatter_lines = push(frontmatter_lines, lines[idx])
+				idx := idx + 1
+			}
+			body_lines := []
+			idx := closing_line + 1
+			loop {
+				if idx >= len(lines) {
+					break
+				}
+				body_lines = push(body_lines, lines[idx])
+				idx := idx + 1
+			}
+
+			frontmatter_text := trim(join(frontmatter_lines, "\n"))
+			body := trim(join(body_lines, "\n"))
+			if len(frontmatter_text) > 0 {
+				try {
+					parsed := parse_yaml(frontmatter_text)
+					if is_dict(parsed) {
+						parsed_keys := keys(parsed)
+						parsed_key_idx := 0
+						loop {
+							if parsed_key_idx >= len(parsed_keys) {
+								break
+							}
+
+							key := parsed_keys[parsed_key_idx]
+							parsed_key_idx := parsed_key_idx + 1
+							meta[key] = parsed[key]
+						}
+					}
+				} except err {
+					print("Warning: Could not parse frontmatter in " + source_file + " (line 1).")
+				}
+			}
+		}
+	}
+
+		meta["draft"] = parse_bool_value(meta["draft"], false)
+		meta["nav_hide"] = parse_bool_value(meta["nav_hide"], false)
+		meta["search_exclude"] = parse_bool_value(meta["search_exclude"], false)
+		meta["order"] = parse_int_value(meta["order"], 1000)
+		meta["prerequisites"] = to_string_array(meta["prerequisites"])
+		meta["tags"] = to_string_array(meta["tags"])
+		meta["categories"] = to_string_array(meta["categories"])
+		meta["taxonomies"] = normalize_taxonomies_map(meta["taxonomies"])
+
+	return {
+		"meta": meta,
+		"body": body
+	}
+}
+
+func apply_template(template, data) {
+	out := template
+	data_keys := keys(data)
+	data_key_idx := 0
+	loop {
+		if data_key_idx >= len(data_keys) {
+			break
+		}
+
+		key := data_keys[data_key_idx]
+		data_key_idx := data_key_idx + 1
+		placeholder := "{{" + key + "}}"
+		out := replace(out, placeholder, to_string(data[key]))
+	}
+	return out
+}
+
+# Delegates to the native single-pass escaper (5 interpreted string passes →
+# one native pass); output is byte-identical to the previous implementation.
+func xml_escape(value) {
+	return escape_xml(value)
+}
+
+func html_escape(value) {
+	return escape_xml(value)
+}
+
+func template_text(value) {
+	return html_escape(to_string(value))
+}
+
+func normalize_lang(value) {
+	lang := to_lower(trim(to_string(value)))
+	lang = replace(lang, "_", "-")
+	lang = regex_replace(lang, "[^a-z0-9-]", "")
+	lang = regex_replace(lang, "^-+|-+$", "")
+	if len(lang) == 0 {
+		return "en"
+	}
+	return lang
+}
+
+# Resolve configured paths without requiring the final path to exist. The
+# nearest existing ancestor is canonicalized first so symlinks cannot hide an
+# output/source overlap; missing path components are then normalized in order.
+func absolute_config_path(value) {
+	cursor := trim(to_string(value))
+	missing := []
+	loop {
+		if path_exists(cursor) {
+			break
+		}
+		parent := dirname(cursor)
+		if parent == cursor {
+			return path_absolute(cursor)
+		}
+		missing = push(missing, basename(cursor))
+		cursor = parent
+	}
+
+	resolved := path_absolute(cursor)
+	i := len(missing) - 1
+	loop {
+		if i < 0 {
+			break
+		}
+		part := missing[i]
+		i = i - 1
+		if len(part) == 0 || part == "." {
+			continue
+		}
+		if part == ".." {
+			resolved = dirname(resolved)
+		} else {
+			resolved = path_join(resolved, part)
+		}
+	}
+	return resolved
+}
+
+func route_to_path(route) {
+	clean := normalize_route(route)
+	if len(clean) == 0 {
+		return "/"
+	}
+	return "/" + clean
+}
+
+func navigation_item(href, label, is_current) {
+	safe_href := xml_escape(href)
+	safe_label := html_escape(label)
+	current_attr := ""
+	if is_current {
+		current_attr = " aria-current=\"page\""
+	}
+	return "<li><a href=\"" + safe_href + "\" class=\"text-primary hover:underline\"" + current_attr + ">" + safe_label + "</a></li>"
+}
+
+func docs_list_html(values, class_name) {
+	items := to_string_array(values)
+	if len(items) == 0 {
+		return ""
+	}
+	html := "<ul class=\"" + html_escape(class_name) + "\">"
+	i := 0
+	loop {
+		if i >= len(items) {
+			break
+		}
+		html = html + "<li>" + html_escape(items[i]) + "</li>"
+		i := i + 1
+	}
+	return html + "</ul>"
+}
+
+func docs_badge(label, value) {
+	clean := trim(to_string(value))
+	if len(clean) == 0 {
+		return ""
+	}
+	return "<span class=\"docs-badge docs-badge-" + clean_slug(label) + "\"><span>" + html_escape(label) + "</span>" + html_escape(clean) + "</span>"
+}
+
+func docs_meta_html(meta) {
+	html := ""
+	html = html + docs_badge("Section", meta["section"])
+	html = html + docs_badge("Audience", meta["audience"])
+	html = html + docs_badge("Difficulty", meta["difficulty"])
+	html = html + docs_badge("Status", meta["status"])
+	html = html + docs_badge("Version", meta["version"])
+	updated := trim(to_string(meta["last_updated"]))
+	if len(updated) == 0 {
+		updated = trim(to_string(meta["date"]))
+	}
+	html = html + docs_badge("Updated", updated)
+	if len(html) == 0 {
+		return ""
+	}
+	return "<div class=\"docs-meta\" aria-label=\"Page metadata\">" + html + "</div>"
+}
+
+func docs_link_button(label, href, rel_name) {
+	clean_href := trim(to_string(href))
+	if len(clean_href) == 0 {
+		return ""
+	}
+	# Relative routes, fragments and HTTP(S) links are supported. Reject active
+	# schemes, including control-character obfuscation interpreted by browsers.
+	url_key := to_lower(regex_replace(clean_href, "[\\x00-\\x20]", ""))
+	if regex_match(url_key, "^[a-z][a-z0-9+.-]*:") && !starts_with(url_key, "https://") && !starts_with(url_key, "http://") {
+		return ""
+	}
+	return "<a class=\"docs-pagination-link docs-pagination-" + html_escape(rel_name) + "\" href=\"" + xml_escape(clean_href) + "\" rel=\"" + html_escape(rel_name) + "\"><span>" + html_escape(label) + "</span></a>"
+}
+
+func docs_prev_next_html(previous, next) {
+	prev_html := docs_link_button("Previous", previous, "prev")
+	next_html := docs_link_button("Next", next, "next")
+	if len(prev_html) == 0 && len(next_html) == 0 {
+		return ""
+	}
+	return "<nav class=\"docs-prev-next\" aria-label=\"Previous and next pages\">" + prev_html + next_html + "</nav>"
+}
+
+func docs_toc_html(markdown) {
+	lines := split(markdown, "\n")
+	html := ""
+	i := 0
+	loop {
+		if i >= len(lines) {
+			break
+		}
+		line := trim(lines[i])
+		i := i + 1
+		level := 0
+		title := ""
+		if starts_with(line, "## ") && starts_with(line, "####") == false {
+			if starts_with(line, "### ") {
+				level = 3
+				title = trim(substring(line, 4, len(line)))
+			} else {
+				level = 2
+				title = trim(substring(line, 3, len(line)))
+			}
+		}
+		if level > 0 && len(title) > 0 {
+			anchor := clean_slug(title)
+			html = html + "<li class=\"toc-level-" + to_string(level) + "\"><a href=\"#" + xml_escape(anchor) + "\">" + html_escape(title) + "</a></li>"
+		}
+	}
+	if len(html) == 0 {
+		return ""
+	}
+	return "<nav class=\"docs-toc\" aria-label=\"On this page\"><h2>On this page</h2><ol>" + html + "</ol></nav>"
+}
+
+func docs_body_html(markdown) {
+	return markdown_to_html(markdown)
+}
+
+func build_navigation(pages_data, custom_collections, current_route, blog_slug) {
+	current_path := route_to_path(current_route)
+	html := navigation_item("/", "Home", current_path == "/")
+	clean_blog_slug := clean_slug(trim(to_string(blog_slug)))
+	if len(clean_blog_slug) > 0 && clean_blog_slug != "untitled" {
+		blog_path := "/" + clean_blog_slug + "/"
+		html = html + navigation_item(blog_path, "Blog", starts_with(current_path, blog_path))
+	}
+
+	page_idx := 0
+	loop {
+		if page_idx >= len(pages_data) {
+			break
+		}
+
+		page_data := pages_data[page_idx]
+		page_idx := page_idx + 1
+			if page_data["nav_hide"] {
+				continue
+			}
+			page_path := route_to_path(page_data["route"])
+			page_label := trim(to_string(page_data["nav_title"]))
+			if len(page_label) == 0 {
+				page_label = page_data["title"]
+			}
+			html = html + navigation_item(page_path, page_label, page_path == current_path)
+		}
+
+	collection_idx := 0
+	loop {
+		if collection_idx >= len(custom_collections) {
+			break
+		}
+
+		collection := custom_collections[collection_idx]
+		collection_idx := collection_idx + 1
+		collection_path := route_to_path(collection["route"])
+		collection_label := collection["title"]
+		html = html + navigation_item(collection_path, collection_label, collection_path == current_path)
+	}
+
+	return html
+}
+
+func public_navigation(settings, pages_data, custom_collections, content_type_counts) {
+	navigation := []
+	if !settings["no_index"] {
+		navigation = push(navigation, {"label": "Home", "url": public_route_url(settings["site_url"], "")})
+		blog_slug := clean_slug(trim(to_string(settings["blog_slug"])))
+		if blog_slug != "untitled" && has_key(content_type_counts, "posts") && content_type_counts["posts"] > 0 {
+			navigation = push(navigation, {"label": "Blog", "url": public_route_url(settings["site_url"], blog_slug + "/")})
+		}
+	}
+
+	page_idx := 0
+	loop {
+		if page_idx >= len(pages_data) {
+			break
+		}
+		page := pages_data[page_idx]
+		page_idx := page_idx + 1
+		if page["draft"] || page["nav_hide"] {
+			continue
+		}
+		label := trim(to_string(page["nav_title"]))
+		if len(label) == 0 {
+			label = page["title"]
+		}
+		navigation = push(navigation, {
+			"label": bounded_public_text(label, 160),
+			"url": public_route_url(settings["site_url"], page["route"])
+		})
+	}
+
+	collection_idx := 0
+	loop {
+		if collection_idx >= len(custom_collections) {
+			break
+		}
+		collection := custom_collections[collection_idx]
+		collection_idx := collection_idx + 1
+		content_type := collection["slug"]
+		if has_key(content_type_counts, content_type) {
+			if content_type_counts[content_type] <= 0 {
+				continue
+			}
+		} else {
+			continue
+		}
+		navigation = push(navigation, {
+			"label": bounded_public_text(collection["title"], 160),
+			"url": public_route_url(settings["site_url"], collection["route"])
+		})
+	}
+	return navigation
+}
+
+func write_public_site_index(settings, pages_data, custom_collections, record_paths) {
+	combined := ""
+	path_idx := 0
+	loop {
+		if path_idx >= len(record_paths) {
+			break
+		}
+		record_path := record_paths[path_idx]
+		path_idx := path_idx + 1
+		if path_exists(record_path) == false {
+			continue
+		}
+		chunk := trim(read_file(record_path))
+		if len(chunk) > 0 {
+			if len(combined) > 0 {
+				combined = combined + "\n"
+			}
+			combined = combined + chunk
+		}
+	}
+
+	record_lines := []
+	if len(combined) > 0 {
+		record_lines = sort(split(combined, "\n"))
+	}
+
+	seen_ids := {}
+	seen_urls := {}
+	content_type_counts := {}
+	content_type_taxonomies := {}
+	record_idx := 0
+	loop {
+		if record_idx >= len(record_lines) {
+			break
+		}
+		fields := split(record_lines[record_idx], "\t")
+		if len(fields) != 4 {
+			print("Error: Invalid WebMCP public record fragment")
+			exit(1)
+		}
+		record := null
+		try {
+			record = parse_json(fields[3])
+		} except err {
+			print("Error: Invalid WebMCP public record JSON")
+			exit(1)
+		}
+		if is_dict(record) == false || has_key(record, "id") == false || has_key(record, "url") == false || has_key(record, "type") == false {
+			print("Error: Invalid WebMCP public record shape")
+			exit(1)
+		}
+		record_id := trim(to_string(record["id"]))
+		record_url := trim(to_string(record["url"]))
+		record_type := trim(to_string(record["type"]))
+		if len(record_id) == 0 || len(record_url) == 0 || starts_with(record_url, "/") == false || contains(record_url, "..") {
+			print("Error: Unsafe WebMCP public record URL or ID: " + record_id)
+			exit(1)
+		}
+		if has_key(seen_ids, record_id) {
+			print("Error: Duplicate WebMCP public record ID: " + record_id)
+			exit(1)
+		}
+		if has_key(seen_urls, record_url) {
+			print("Error: Duplicate WebMCP public record URL: " + record_url)
+			exit(1)
+		}
+		seen_ids[record_id] = true
+		seen_urls[record_url] = true
+		if has_key(content_type_counts, record_type) {
+			content_type_counts[record_type] = content_type_counts[record_type] + 1
+		} else {
+			content_type_counts[record_type] = 0
+			content_type_counts[record_type] = content_type_counts[record_type] + 1
+		}
+		type_taxonomies := {}
+		if has_key(content_type_taxonomies, record_type) {
+			type_taxonomies = content_type_taxonomies[record_type]
+		}
+		if has_key(record, "taxonomies") && is_dict(record["taxonomies"]) {
+			taxonomy_names := keys(record["taxonomies"])
+			taxonomy_idx := 0
+			loop {
+				if taxonomy_idx >= len(taxonomy_names) {
+					break
+				}
+				type_taxonomies[taxonomy_names[taxonomy_idx]] = true
+				taxonomy_idx := taxonomy_idx + 1
+			}
+		}
+		content_type_taxonomies[record_type] = type_taxonomies
+		# Replace the sortable fragment with its serializer-produced JSON before
+		# constructing the final array in one native parse.
+		record_lines[record_idx] = fields[3]
+		record_idx := record_idx + 1
+	}
+
+	type_titles := {"pages": "Pages", "posts": "Posts"}
+	type_listings := {}
+	if settings["no_index"] == false && len(trim(to_string(settings["blog_slug"]))) > 0 {
+		type_listings["posts"] = public_route_url(settings["site_url"], settings["blog_slug"] + "/")
+	}
+	collection_idx := 0
+	loop {
+		if collection_idx >= len(custom_collections) {
+			break
+		}
+		collection := custom_collections[collection_idx]
+		collection_idx := collection_idx + 1
+		type_titles[collection["slug"]] = collection["title"]
+		type_listings[collection["slug"]] = public_route_url(settings["site_url"], collection["route"])
+	}
+
+	content_types := []
+	type_names := sort(keys(content_type_counts))
+	type_idx := 0
+	loop {
+		if type_idx >= len(type_names) {
+			break
+		}
+		name := type_names[type_idx]
+		type_idx := type_idx + 1
+		title := taxonomy_label(name)
+		if has_key(type_titles, name) {
+			title = type_titles[name]
+		}
+		type_taxonomy_names := []
+		if has_key(content_type_taxonomies, name) {
+			type_taxonomy_names = sort(keys(content_type_taxonomies[name]))
+		}
+		type_info := {
+			"name": name,
+			"title": bounded_public_text(title, 160),
+			"count": content_type_counts[name],
+			"taxonomies": type_taxonomy_names
+		}
+		if has_key(type_listings, name) {
+			type_info["listing_url"] = type_listings[name]
+		}
+		content_types = push(content_types, type_info)
+	}
+
+	items := []
+	if len(record_lines) > 0 {
+		items = parse_json("[" + join(record_lines, ",") + "]")
+	}
+	index_document := {
+		"schema": "kujo-ssg-site-index/v1",
+		"generated_by": {"name": "kujo-ssg", "version": VERSION},
+		"site": {
+			"title": bounded_public_text(settings["site_title"], 160),
+			"tagline": bounded_public_text(settings["site_tagline"], 320),
+			"url": trim(to_string(settings["site_url"])),
+			"base_path": site_base_path(settings["site_url"]),
+			"language": "en"
+		},
+		"navigation": public_navigation(settings, pages_data, custom_collections, content_type_counts),
+		"content_types": content_types,
+		"items": items
+	}
+
+	well_known_dir := path_join(settings["output"], ".well-known")
+	ensure_dir(well_known_dir)
+	write_file(path_join(well_known_dir, "kujo-site-index.json"), to_json(index_document) + "\n")
+}
+
+func load_lookup(path) {
+	lookup := {}
+	if path_exists(path) && path_is_symlink(path) {
+		print("Warning: Skipped symlink while reading lookup: " + path)
+		return lookup
+	}
+	if !path_exists(path) {
+		return lookup
+	}
+	try {
+		parsed := parse_yaml(read_file(path))
+		if is_dict(parsed) {
+			parsed_keys := keys(parsed)
+			parsed_key_idx := 0
+			loop {
+				if parsed_key_idx >= len(parsed_keys) {
+					break
+				}
+
+				key := parsed_keys[parsed_key_idx]
+				parsed_key_idx := parsed_key_idx + 1
+				entry := parsed[key]
+				if is_dict(entry) && has_key(entry, "name") {
+					lookup[to_string(key)] = to_string(entry["name"])
+				} else {
+					lookup[to_string(key)] = to_string(entry)
+				}
+			}
+		}
+	} except err {
+		# Lookup files are optional.
+	}
+	return lookup
+}
+
+func resolve_lookup(value, lookup, fallback) {
+	if value == null {
+		return fallback
+	}
+	key := trim(to_string(value))
+	if len(key) == 0 {
+		return fallback
+	}
+	if has_key(lookup, key) {
+		return lookup[key]
+	}
+	number_wrapped := "Number(" + key + ")"
+	if has_key(lookup, number_wrapped) {
+		return lookup[number_wrapped]
+	}
+	if starts_with(key, "Number(") && ends_with(key, ")") && len(key) > 8 {
+		plain_key := substring(key, 7, len(key) - 1)
+		if has_key(lookup, plain_key) {
+			return lookup[plain_key]
+		}
+	}
+	return key
+}
+
+func resolve_lookup_array(values, lookup) {
+	out := []
+	value_idx := 0
+	loop {
+		if value_idx >= len(values) {
+			break
+		}
+
+		value := values[value_idx]
+		value_idx := value_idx + 1
+		resolved := resolve_lookup(value, lookup, trim(to_string(value)))
+		if len(trim(resolved)) > 0 {
+			out = push(out, resolved)
+		}
+	}
+	return out
+}
+
+func taxonomy_lookup_for(taxonomy_lookups, content_type, taxonomy_name) {
+	tax_name := clean_slug(taxonomy_name)
+	if tax_name == "untitled" {
+		return {}
+	}
+
+	raw_content_type := trim(content_type)
+	if len(raw_content_type) > 0 {
+		content_slug := clean_slug(raw_content_type)
+		if content_slug != "untitled" {
+			specific_key := content_slug + ":" + tax_name
+			if has_key(taxonomy_lookups, specific_key) {
+				return taxonomy_lookups[specific_key]
+			}
+		}
+	}
+
+	global_key := "global:" + tax_name
+	if has_key(taxonomy_lookups, global_key) {
+		return taxonomy_lookups[global_key]
+	}
+
+	return {}
+}
+
+func is_reserved_frontmatter_key(key_name) {
+	key := to_lower(trim(key_name))
+	if key == "title" || key == "author" || key == "date" || key == "category" || key == "categories" || key == "tags" || key == "taxonomies" {
+		return true
+	}
+	if key == "description" || key == "keywords" || key == "seo_title" || key == "seo_description" || key == "lang" || key == "canonical" {
+		return true
+	}
+	if key == "featured_image" || key == "custom_url" || key == "template" || key == "draft" || key == "order" || key == "excerpt" || key == "nav_hide" {
+		return true
+	}
+	return false
+}
+
+func taxonomy_terms_from_meta(meta, taxonomy_name) {
+	tax_name := clean_slug(taxonomy_name)
+	terms := []
+
+	if has_key(meta, tax_name) {
+		terms = merge_unique_strings(terms, to_string_array(meta[tax_name]))
+	}
+
+	if tax_name == "categories" && has_key(meta, "category") {
+		category_single := trim(to_string(meta["category"]))
+		if len(category_single) > 0 {
+			terms = push_unique_string(terms, category_single)
+		}
+	}
+
+	if has_key(meta, "taxonomies") && is_dict(meta["taxonomies"]) {
+		taxonomies_map := meta["taxonomies"]
+		if has_key(taxonomies_map, tax_name) {
+			terms = merge_unique_strings(terms, to_string_array(taxonomies_map[tax_name]))
+		}
+	}
+
+	return terms
+}
+
+func taxonomy_names_from_meta(meta, content_type, taxonomy_lookups) {
+	names := ["categories", "tags"]
+
+	if has_key(meta, "taxonomies") && is_dict(meta["taxonomies"]) {
+		taxonomies_map := meta["taxonomies"]
+		taxonomy_names := keys(taxonomies_map)
+		i := 0
+		loop {
+			if i >= len(taxonomy_names) {
+				break
+			}
+			taxonomy_name := taxonomy_names[i]
+			i := i + 1
+
+			normalized := clean_slug(taxonomy_name)
+			if normalized != "untitled" {
+				names = push_unique_string(names, normalized)
+			}
+		}
+	}
+
+	meta_keys := keys(meta)
+	j := 0
+	loop {
+		if j >= len(meta_keys) {
+			break
+		}
+		meta_key := meta_keys[j]
+		j := j + 1
+
+		# Fast path: reject reserved keys on the raw string before the much more
+		# expensive clean_slug() regex work (hot path for large sites).
+		if is_reserved_frontmatter_key(meta_key) {
+			continue
+		}
+
+		normalized_key := clean_slug(meta_key)
+		if normalized_key == "untitled" {
+			continue
+		}
+		if is_reserved_frontmatter_key(normalized_key) {
+			continue
+		}
+
+		lookup := taxonomy_lookup_for(taxonomy_lookups, content_type, normalized_key)
+		if len(keys(lookup)) > 0 {
+			names = push_unique_string(names, normalized_key)
+		}
+	}
+
+	return names
+}
+
+# Render custom-taxonomy HTML, short-circuiting when the item cannot have any.
+func custom_taxonomies_html(meta, content_type, taxonomy_lookups, excluded, has_custom_tax_lookups) {
+	has_inline := is_dict(meta["taxonomies"]) && len(keys(meta["taxonomies"])) > 0
+	if !has_custom_tax_lookups && !has_inline {
+		return ""
+	}
+	return taxonomy_groups_html(resolve_taxonomy_groups(meta, content_type, taxonomy_lookups), excluded)
+}
+
+func resolve_taxonomy_groups(meta, content_type, taxonomy_lookups) {
+	groups := {}
+	taxonomy_names := taxonomy_names_from_meta(meta, content_type, taxonomy_lookups)
+
+	i := 0
+	loop {
+		if i >= len(taxonomy_names) {
+			break
+		}
+		taxonomy_name := taxonomy_names[i]
+		i := i + 1
+
+		raw_terms := taxonomy_terms_from_meta(meta, taxonomy_name)
+		if len(raw_terms) == 0 {
+			continue
+		}
+
+		lookup := taxonomy_lookup_for(taxonomy_lookups, content_type, taxonomy_name)
+		resolved_terms := raw_terms
+		if len(keys(lookup)) > 0 {
+			resolved_terms = resolve_lookup_array(raw_terms, lookup)
+		}
+
+		resolved_terms = merge_unique_strings([], resolved_terms)
+		if len(resolved_terms) > 0 {
+			groups[taxonomy_name] = resolved_terms
+		}
+	}
+
+	return groups
+}
+
+# Produce the allowlisted, deterministic taxonomy projection used by the public
+# site index. Raw lookup IDs and arbitrary frontmatter never cross this seam.
+func public_taxonomies(groups) {
+	out := {}
+	if !is_dict(groups) {
+		return out
+	}
+
+	names := sort(keys(groups))
+	name_idx := 0
+	loop {
+		if name_idx >= len(names) {
+			break
+		}
+		name := clean_slug(names[name_idx])
+		name_idx := name_idx + 1
+		if name == "untitled" || len(name) > 64 {
+			continue
+		}
+
+		terms := merge_unique_strings([], to_string_array(groups[name]))
+		sortable_terms := []
+		seen_terms := {}
+		term_idx := 0
+		loop {
+			if term_idx >= len(terms) {
+				break
+			}
+			term := trim(regex_replace(to_string(terms[term_idx]), "\\s+", " "))
+			term_idx := term_idx + 1
+			if len(term) == 0 {
+				continue
+			}
+			if len(term) > 128 {
+				term = substring(term, 0, 128)
+			}
+			term_key := to_lower(term)
+			if has_key(seen_terms, term_key) {
+				continue
+			}
+			seen_terms[term_key] = true
+			sortable_terms = push(sortable_terms, term_key + "\t" + term)
+		}
+		sortable_terms = sort(sortable_terms)
+		bounded := []
+		term_idx = 0
+		loop {
+			if term_idx >= len(sortable_terms) || term_idx >= 20 {
+				break
+			}
+			parts := split(sortable_terms[term_idx], "\t")
+			bounded = push(bounded, parts[1])
+			term_idx := term_idx + 1
+		}
+		if len(bounded) > 0 {
+			out[name] = bounded
+		}
+	}
+	return out
+}
+
+func bounded_public_text(value, maximum) {
+	text := trim(regex_replace(regex_replace(to_string(value), "<[^>]+>", " "), "\\s+", " "))
+	if len(text) > maximum {
+		text = trim(substring(text, 0, maximum))
+	}
+	return text
+}
+
+func site_base_path(site_url) {
+	site := trim(to_string(site_url))
+	if len(site) == 0 {
+		return "/"
+	}
+	fragment_pos := index_of(site, "#")
+	if fragment_pos >= 0 {
+		site = substring(site, 0, fragment_pos)
+	}
+	query_pos := index_of(site, "?")
+	if query_pos >= 0 {
+		site = substring(site, 0, query_pos)
+	}
+	scheme_pos := index_of(site, "://")
+	if scheme_pos >= 0 {
+		after_scheme := substring(site, scheme_pos + 3, len(site))
+		slash_pos := index_of(after_scheme, "/")
+		if slash_pos < 0 {
+			return "/"
+		}
+		site = substring(after_scheme, slash_pos, len(after_scheme))
+	}
+	if !starts_with(site, "/") {
+		site = "/" + site
+	}
+	loop {
+		if len(site) <= 1 || !ends_with(site, "/") {
+			break
+		}
+		site = substring(site, 0, len(site) - 1)
+	}
+	if site == "/" {
+		return site
+	}
+	return site + "/"
+}
+
+func public_route_url(base_path, route) {
+	clean_route := normalize_route(route)
+	base := site_base_path(base_path)
+	if len(clean_route) == 0 {
+		return base
+	}
+	if base == "/" {
+		return "/" + clean_route
+	}
+	return base + clean_route
+}
+
+func public_content_record(content_type, slug, route, title, description, summary, language, searchable, taxonomies, published, updated, site_url) {
+	record := {
+		"id": content_type + ":" + slug,
+		"type": content_type,
+		"slug": slug,
+		"url": public_route_url(site_url, route),
+		"title": bounded_public_text(title, 160),
+		"description": bounded_public_text(description, 320),
+		"summary": bounded_public_text(summary, 600),
+		"language": normalize_lang(language),
+		"searchable": searchable,
+		"taxonomies": public_taxonomies(taxonomies)
+	}
+	published_iso := trim(to_string(published))
+	if len(published_iso) == 10 {
+		record["published"] = published_iso
+	}
+	updated_iso := trim(to_string(updated))
+	if len(updated_iso) == 10 {
+		record["updated"] = updated_iso
+	}
+	return record
+}
+
+func public_record_line(record) {
+	return record["type"] + "\t" + record["url"] + "\t" + record["id"] + "\t" + to_json(record)
+}
+
+func taxonomy_terms_from_groups(groups, taxonomy_name) {
+	tax_name := clean_slug(taxonomy_name)
+	if has_key(groups, tax_name) {
+		return to_string_array(groups[tax_name])
+	}
+	return []
+}
+
+func taxonomy_terms_html(terms) {
+	if len(terms) == 0 {
+		return ""
+	}
+	html := ""
+	term_idx := 0
+	loop {
+		if term_idx >= len(terms) {
+			break
+		}
+
+		term := terms[term_idx]
+		term_idx := term_idx + 1
+		html := html + "<span class=\"tag\">" + xml_escape(term) + "</span>"
+	}
+	return html
+}
+
+func taxonomy_label(taxonomy_name) {
+	parts := split(clean_slug(taxonomy_name), "-")
+	words := []
+	i := 0
+	loop {
+		if i >= len(parts) {
+			break
+		}
+		clean_part := trim(parts[i])
+		i := i + 1
+
+		if len(clean_part) == 0 {
+			continue
+		}
+		if len(clean_part) == 1 {
+			words = push(words, to_upper(clean_part))
+		} else {
+			words = push(words, to_upper(substring(clean_part, 0, 1)) + substring(clean_part, 1, len(clean_part)))
+		}
+	}
+	return join(words, " ")
+}
+
+func taxonomy_groups_html(groups, excluded_taxonomies) {
+	html := ""
+	if !is_dict(groups) {
+		return html
+	}
+
+	excluded_lookup := {}
+	excluded_list := to_string_array(excluded_taxonomies)
+	i := 0
+	loop {
+		if i >= len(excluded_list) {
+			break
+		}
+		excluded_slug := clean_slug(excluded_list[i])
+		if excluded_slug != "untitled" {
+			excluded_lookup[excluded_slug] = true
+		}
+		i := i + 1
+	}
+
+	taxonomy_keys := sort(keys(groups))
+	j := 0
+	loop {
+		if j >= len(taxonomy_keys) {
+			break
+		}
+
+		taxonomy_name := taxonomy_keys[j]
+		j := j + 1
+
+		if has_key(excluded_lookup, taxonomy_name) {
+			continue
+		}
+
+		terms := to_string_array(groups[taxonomy_name])
+		if len(terms) == 0 {
+			continue
+		}
+
+		label := taxonomy_label(taxonomy_name)
+		html = html + "<div class=\"taxonomy-group taxonomy-" + clean_slug(taxonomy_name) + "\"><span class=\"taxonomy-label\">" + xml_escape(label) + ":</span> " + taxonomy_terms_html(terms) + "</div>"
+	}
+
+	return html
+}
+
+func load_taxonomy_lookups(content_root) {
+	lookups := {}
+	if !path_exists(content_root) || !path_is_dir(content_root) {
+		return lookups
+	}
+
+	entries := sort(list_dir(content_root))
+	i := 0
+	loop {
+		if i >= len(entries) {
+			break
+		}
+
+		entry := entries[i]
+		i := i + 1
+
+		full_path := path_join(content_root, entry)
+		if !path_is_file(full_path) {
+			continue
+		}
+
+		lower_name := to_lower(entry)
+		if !ends_with(lower_name, ".yml") && !ends_with(lower_name, ".yaml") {
+			continue
+		}
+		if lower_name == "authors.yml" || lower_name == "authors.yaml" {
+			continue
+		}
+
+		stem := entry
+		if ends_with(lower_name, ".yaml") {
+			stem = substring(entry, 0, len(entry) - 5)
+		} else {
+			stem = substring(entry, 0, len(entry) - 4)
+		}
+
+		taxonomy_lookup := load_lookup(full_path)
+		if len(keys(taxonomy_lookup)) == 0 {
+			continue
+		}
+
+		parts := split(stem, "-")
+		if len(parts) < 2 {
+			taxonomy_name := clean_slug(stem)
+			if taxonomy_name != "untitled" {
+				lookups["global:" + taxonomy_name] = taxonomy_lookup
+			}
+			continue
+		}
+
+		taxonomy_name := clean_slug(parts[len(parts) - 1])
+		content_type_parts := []
+		j := 0
+		loop {
+			if j >= len(parts) - 1 {
+				break
+			}
+			content_type_parts = push(content_type_parts, parts[j])
+			j := j + 1
+		}
+
+		content_type_name := clean_slug(join(content_type_parts, "-"))
+		if taxonomy_name == "untitled" || content_type_name == "untitled" {
+			continue
+		}
+
+		lookups[content_type_name + ":" + taxonomy_name] = taxonomy_lookup
+	}
+
+	return lookups
+}
+
+func tags_html(tags) {
+	if len(tags) == 0 {
+		return "<span class=\"tag\">General</span>"
+	}
+	html := ""
+	tag_idx := 0
+	loop {
+		if tag_idx >= len(tags) {
+			break
+		}
+
+		tag := tags[tag_idx]
+		tag_idx := tag_idx + 1
+		html := html + "<span class=\"tag\">" + html_escape(tag) + "</span>"
+	}
+	return html
+}
+
+func meta_terms(meta, taxonomy_name, lookup) {
+	terms := []
+	if has_key(meta, taxonomy_name) {
+		terms = to_string_array(meta[taxonomy_name])
+	}
+
+	if taxonomy_name == "categories" && has_key(meta, "category") {
+		single := trim(to_string(meta["category"]))
+		if len(single) > 0 {
+			terms = push(terms, single)
+		}
+	}
+
+	if len(keys(lookup)) > 0 {
+		terms = resolve_lookup_array(terms, lookup)
+	}
+
+	return terms
+}
+
+func meta_string(meta, key, fallback) {
+	if is_dict(meta) && has_key(meta, key) {
+		value := trim(to_string(meta[key]))
+		if len(value) > 0 {
+			return value
+		}
+	}
+	return fallback
+}
+
+func build_page_title(seo_title, site_title) {
+	base := trim(seo_title)
+	if len(base) == 0 {
+		base := trim(site_title)
+	}
+	site := trim(site_title)
+	if len(site) == 0 || base == site {
+		return base
+	}
+	return base + " | " + site
+}
+
+func route_absolute_url(site_url, route) {
+	site := trim(site_url)
+	if len(site) == 0 {
+		return ""
+	}
+	if ends_with(site, "/") {
+		site := substring(site, 0, len(site) - 1)
+	}
+	clean_route := normalize_route(route)
+	if len(clean_route) == 0 {
+		return site + "/"
+	}
+	return site + "/" + clean_route
+}
+
+func is_remote_media_path(path_value) {
+	path_text := trim(path_value)
+	if len(path_text) == 0 {
+		return false
+	}
+	return starts_with(path_text, "http://") || starts_with(path_text, "https://") || starts_with(path_text, "//")
+}
+
+func strip_query_fragment(path_value) {
+	clean := trim(path_value)
+	if len(clean) == 0 {
+		return ""
+	}
+	query_parts := split(clean, "?")
+	clean = query_parts[0]
+	fragment_parts := split(clean, "#")
+	return trim(fragment_parts[0])
+}
+
+func normalize_image_extension(path_value) {
+	clean := strip_query_fragment(path_value)
+	if len(clean) == 0 {
+		return ""
+	}
+	ext := to_lower(path_extension(clean))
+	if ext == "jpeg" {
+		return "jpg"
+	}
+	if ext == "tif" {
+		return "tiff"
+	}
+	return ext
+}
+
+func has_supported_image_extension(path_value) {
+	ext := normalize_image_extension(path_value)
+	return ext == "jpg" || ext == "png" || ext == "gif" || ext == "webp" || ext == "bmp" || ext == "tiff"
+}
+
+func file_is_smaller(candidate, source) {
+	if !path_exists(candidate) || !path_exists(source) {
+		return false
+	}
+	try {
+		return file_size(candidate) < file_size(source)
+	} except err {
+		return false
+	}
+}
+
+# The runtime image encoder writes lossless WebP, which can make photographic
+# JPEGs several times larger. Prefer the standard libwebp encoder at a sensible
+# lossy quality and accept it only when it is smaller than the source.
+# Structured argv keeps content paths out of a shell.
+func try_optimized_webp(source, destination) {
+	try {
+		result := spawn_process([
+			"cwebp",
+			"-quiet",
+			"-mt",
+			"-q",
+			"82",
+			source,
+			"-o",
+			destination
+		], {"timeout_ms": 120000, "max_output_bytes": 65536})
+		return result.success && file_is_smaller(destination, source)
+	} except err {
+		return false
+	}
+}
+
+func featured_image_output_base(source_key) {
+	clean_source := strip_query_fragment(source_key)
+	name := basename(clean_source)
+	ext := path_extension(name)
+	if len(ext) > 0 {
+		name = replace(name, "." + ext, "")
+	}
+	name_slug := clean_slug(name)
+	if name_slug == "untitled" {
+		name_slug = "featured"
+	}
+	hash_value := md5(source_key)
+	hash_short := hash_value
+	if len(hash_short) > 12 {
+		hash_short = substring(hash_short, 0, 12)
+	}
+	return name_slug + "-" + hash_short
+}
+
+func path_is_within_root(candidate, root) {
+	if !path_exists(candidate) || !path_exists(root) {
+		return false
+	}
+
+	candidate_absolute := ""
+	root_absolute := ""
+	try {
+		candidate_absolute = path_absolute(candidate)
+		root_absolute = path_absolute(root)
+	} except err {
+		return false
+	}
+
+	if candidate_absolute == root_absolute {
+		return true
+	}
+	if !ends_with(root_absolute, "/") {
+		root_absolute = root_absolute + "/"
+	}
+	return starts_with(candidate_absolute, root_absolute)
+}
+
+func is_allowed_local_featured_image_source(candidate, source_file, settings) {
+	allowed_roots := [settings["content"], settings["assets"], dirname(source_file)]
+	root_idx := 0
+	loop {
+		if root_idx >= len(allowed_roots) {
+			break
+		}
+		if path_is_within_root(candidate, allowed_roots[root_idx]) {
+			return true
+		}
+		root_idx := root_idx + 1
+	}
+	return false
+}
+
+func resolve_local_featured_image_source(path_value, source_file, settings) {
+	source := trim(path_value)
+	if len(source) == 0 {
+		return ""
+	}
+
+	candidates := [source]
+	if starts_with(source, "/") {
+		rel_source := substring(source, 1, len(source))
+		candidates = push(candidates, rel_source)
+		candidates = push(candidates, path_join(settings["content"], rel_source))
+		candidates = push(candidates, path_join(settings["assets"], rel_source))
+	} else {
+		candidates = push(candidates, path_join(dirname(source_file), source))
+		candidates = push(candidates, path_join(settings["content"], source))
+		candidates = push(candidates, path_join(settings["assets"], source))
+		if starts_with(source, "assets/") {
+			rel_from_assets := substring(source, len("assets/"), len(source))
+			candidates = push(candidates, path_join(settings["assets"], rel_from_assets))
+		}
+	}
+
+	rejected_candidate := ""
+	candidate_idx := 0
+	loop {
+		if candidate_idx >= len(candidates) {
+			break
+		}
+
+		candidate := candidates[candidate_idx]
+		candidate_idx := candidate_idx + 1
+		clean_candidate := trim(candidate)
+		if len(clean_candidate) == 0 {
+			continue
+		}
+		if path_exists(clean_candidate) && path_is_file(clean_candidate) {
+			if is_allowed_local_featured_image_source(clean_candidate, source_file, settings) {
+				return clean_candidate
+			}
+			rejected_candidate = clean_candidate
+		}
+	}
+	if len(rejected_candidate) > 0 {
+		print("Warning: Rejected featured_image '" + source + "' in " + source_file + ": resolved path escapes approved content/assets roots.")
+	}
+
+	return ""
+}
+
+func convert_or_copy_featured_image(local_source, source_key, settings) {
+	if len(trim(local_source)) == 0 {
+		return ""
+	}
+
+	images_dir := path_join(settings["output"], "images")
+	ensure_dir(images_dir)
+
+	ext := normalize_image_extension(local_source)
+	if len(ext) == 0 {
+		ext = "jpg"
+	}
+
+	base := featured_image_output_base(source_key)
+	webp_rel := "images/" + base + ".webp"
+	webp_abs := path_join(settings["output"], webp_rel)
+
+	if ext == "webp" {
+		if path_exists(webp_abs) {
+			return webp_rel
+		}
+		copy_file(local_source, webp_abs)
+		return webp_rel
+	}
+
+	if path_exists(webp_abs) {
+		if file_is_smaller(webp_abs, local_source) {
+			return webp_rel
+		}
+		delete_file(webp_abs)
+	}
+
+	converted := try_optimized_webp(local_source, webp_abs)
+
+	if converted {
+		return webp_rel
+	}
+	if path_exists(webp_abs) {
+		delete_file(webp_abs)
+	}
+
+	fallback_rel := "images/" + base + "." + ext
+	fallback_abs := path_join(settings["output"], fallback_rel)
+	if !path_exists(fallback_abs) {
+		copy_file(local_source, fallback_abs)
+	}
+	return fallback_rel
+}
+
+func process_remote_featured_image(source_url, settings) {
+	if !parse_bool_value(settings["download_remote_images"], false) {
+		return source_url
+	}
+
+	download_url := trim(source_url)
+	if starts_with(download_url, "//") {
+		download_url = "https:" + download_url
+	}
+	if !has_supported_image_extension(download_url) {
+		return source_url
+	}
+
+	images_dir := path_join(settings["output"], "images")
+	ensure_dir(images_dir)
+
+	ext := normalize_image_extension(download_url)
+	if len(ext) == 0 {
+		ext = "jpg"
+	}
+
+	base := featured_image_output_base(download_url)
+	webp_rel := "images/" + base + ".webp"
+	webp_abs := path_join(settings["output"], webp_rel)
+	if path_exists(webp_abs) {
+		return webp_rel
+	}
+
+	download_rel := "images/" + base + "." + ext
+	download_abs := path_join(settings["output"], download_rel)
+	if !path_exists(download_abs) {
+		try {
+			destination_policy := "deny_private"
+			if parse_bool_value(settings["allow_private_remote_images"], false) {
+				destination_policy = "default"
+			}
+			http_download_file(download_url, download_abs, {
+				"max_bytes": 26214400,
+				"timeout_ms": 30000,
+				"destination_policy": destination_policy,
+				"pin_dns": true,
+				"redirects": "none",
+				"overwrite": false
+			})
+		} except err {
+			print("Warning: Could not mirror remote featured_image '" + download_url + "': " + safe_error_text(err))
+			return source_url
+		}
+	}
+
+	if ext == "webp" {
+		return download_rel
+	}
+
+	converted := try_optimized_webp(download_abs, webp_abs)
+
+	if converted {
+		delete_file(download_abs)
+		return webp_rel
+	}
+	if path_exists(webp_abs) {
+		delete_file(webp_abs)
+	}
+
+	return download_rel
+}
+
+func process_featured_image_path(path_value, source_file, settings) {
+	source := trim(path_value)
+	if len(source) == 0 {
+		return ""
+	}
+
+	if is_remote_media_path(source) {
+		return process_remote_featured_image(source, settings)
+	}
+
+	local_source := resolve_local_featured_image_source(source, source_file, settings)
+	if len(local_source) == 0 {
+		return ""
+	}
+
+	return convert_or_copy_featured_image(local_source, local_source, settings)
+}
+
+func resolve_media_url(path_value, relative_prefix) {
+	media_path := trim(path_value)
+	if len(media_path) == 0 {
+		return ""
+	}
+	if starts_with(media_path, "http://") || starts_with(media_path, "https://") || starts_with(media_path, "//") || starts_with(media_path, "/") {
+		return media_path
+	}
+	return relative_prefix + media_path
+}
+
+# Build an absolute media URL for social cards (og:image/twitter:image need
+# absolute URLs). Falls back to empty when site_url is unknown.
+func absolute_media_url(path_value, site_url) {
+	media_path := trim(path_value)
+	if len(media_path) == 0 {
+		return ""
+	}
+	if starts_with(media_path, "http://") || starts_with(media_path, "https://") || starts_with(media_path, "//") {
+		return media_path
+	}
+	site := trim(site_url)
+	if len(site) == 0 {
+		return ""
+	}
+	if ends_with(site, "/") {
+		site = substring(site, 0, len(site) - 1)
+	}
+	if starts_with(media_path, "/") {
+		return site + media_path
+	}
+	return site + "/" + media_path
+}
+
+func json_escape(value) {
+	# JSON string serialization plus the HTML script-data boundary. Escaping '<'
+	# prevents both closing-script and legacy HTML-comment parser transitions.
+	# Escape opening braces so later template passes cannot reinterpret JSON data.
+	encoded := to_json(to_string(value))
+	return replace(replace(substring(encoded, 1, len(encoded) - 1), "<", "\\u003c"), "{", "\\u007b")
+}
+
+func webmcp_runtime_source() {
+	return join([
+		"(()=>{'use strict';const m=document.modelContext,s=document.currentScript;if(!m||typeof m.registerTool!=='function'||!s)return;const u=new URL(s.dataset.kujoSiteIndex||'',document.baseURI);if(u.origin!==location.origin)return;let p;const E=x=>{throw Error('Kujo WebMCP: '+x)},O=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{},N=x=>String(x).trim().toLocaleLowerCase(),C=(x,n)=>{x=String(x||'').replace(/\\s+/g,' ').trim();return x.length>n?x.slice(0,n):x},K=(x,a)=>{for(const k of Object.keys(x))if(!a.includes(k))E('unknown argument '+k)},L=x=>{if(x===undefined)return 5;if(!Number.isInteger(x)||x<1||x>10)E('limit must be 1 to 10');return x},S=c=>c&&c.signal instanceof AbortSignal?c.signal:undefined;",
+		"const D=a=>{if(!a||a.schema!=='kujo-ssg-site-index/v1'||!a.site||!Array.isArray(a.navigation)||!Array.isArray(a.content_types)||!Array.isArray(a.items))E('unsupported or malformed site index');return a},F=q=>{if(!p)p=fetch(u.href,{headers:{Accept:'application/json'},credentials:'same-origin',signal:q}).then(r=>{if(!r.ok)E('site index request failed');return r.json()}).then(D).catch(e=>{p=0;throw e});return p},T=(a,t)=>a.content_types.some(x=>x.name===t),A=i=>{const a=[];for(const n of Object.keys(i.taxonomies||{}).sort())for(const t of i.taxonomies[n]||[])a.push(String(t));return a},R=i=>({id:i.id,type:i.type,title:i.title,description:C(i.description,120),url:i.url});",
+		"const Q=(a,t,v)=>{if(v===undefined)return{};if(!v||typeof v!=='object'||Array.isArray(v))E('taxonomy must be an object');const n=Object.keys(v),z=a.content_types.find(x=>x.name===t),w=z?z.taxonomies:[];if(n.length>3)E('too many taxonomies');for(const k of n)if(!w.includes(k)||!Array.isArray(v[k])||v[k].length<1||v[k].length>5||v[k].some(x=>typeof x!=='string'||!N(x)))E('invalid taxonomy filter');return v},M=(i,f)=>{for(const k of Object.keys(f)){const a=(i.taxonomies&&i.taxonomies[k]||[]).map(N);if(!f[k].some(x=>a.includes(N(x))))return false}return true};",
+		"async function I(x,c){x=O(x);K(x,[]);const a=await F(S(c));return{schema:a.schema,site:a.site,navigation:a.navigation.slice(0,25),content_types:a.content_types.slice(0,25)}}",
+		"async function H(x,c){x=O(x);K(x,['query','limit','content_type']);if(typeof x.query!=='string'||x.query.trim().length<1||x.query.trim().length>200)E('query must contain 1 to 200 characters');const l=L(x.limit),a=await F(S(c)),q=N(x.query);if(x.content_type!==undefined&&!T(a,x.content_type))E('unknown content_type');const z=[];for(const i of a.items){if(!i.searchable||x.content_type&&i.type!==x.content_type)continue;const t=N(i.title),d=N(i.description),b=N(i.summary),h=A(i).filter(y=>N(y).includes(q));let r=t===q?100:t.startsWith(q)?80:t.includes(q)?60:h.length?40:d.includes(q)?25:b.includes(q)?10:0;if(r)z.push({i,r,h})}z.sort((a,b)=>b.r-a.r||String(a.i.url).localeCompare(String(b.i.url))||String(a.i.id).localeCompare(String(b.i.id)));const y=z.slice(0,l).map(x=>{const a=R(x.i);a.score=x.r;if(x.h.length)a.matched_taxonomies=x.h.slice(0,5);return a});return{query:C(x.query,200),results:y,returned_count:y.length,has_more:z.length>y.length}}",
+		"async function B(x,c){x=O(x);K(x,['type','taxonomy','limit']);if(typeof x.type!=='string'||!x.type.trim())E('type is required');const l=L(x.limit),a=await F(S(c));if(!T(a,x.type))E('unknown content type');const f=Q(a,x.type,x.taxonomy),z=a.items.filter(i=>i.type===x.type&&M(i,f)).sort((a,b)=>String(a.url).localeCompare(String(b.url))||String(a.id).localeCompare(String(b.id))),y=z.slice(0,l).map(R);return{type:x.type,taxonomy:f,items:y,returned_count:y.length,total_count:z.length,has_more:z.length>y.length}}",
+		"async function G(x,c){x=O(x);K(x,['id','url']);const d=typeof x.id==='string'&&x.id.trim(),v=typeof x.url==='string'&&x.url.trim();if(!!d===!!v)E('provide exactly one of id or url');const a=await F(S(c));let i;if(d)i=a.items.find(y=>y.id===x.id.trim());else{const y=new URL(x.url,location.href);if(y.origin!==location.origin)E('url must be same-origin');i=a.items.find(z=>z.url===y.pathname)}if(!i)E('content record not found');const o={id:i.id,type:i.type,slug:i.slug,url:i.url,title:i.title,description:i.description,summary:i.summary,language:i.language,searchable:i.searchable,taxonomies:{}};for(const n of Object.keys(i.taxonomies||{}).sort())o.taxonomies[n]=i.taxonomies[n].slice(0,5);if(i.published)o.published=i.published;if(i.updated)o.updated=i.updated;return o}",
+		"const a={readOnlyHint:true,untrustedContentHint:true},e={type:'object',additionalProperties:false},t=[",
+		"{name:'get_site_info',description:'Describe this public static site, its navigation, and available content collections.',inputSchema:{...e,properties:{}},execute:I,annotations:a},",
+		"{name:'search_site',description:'Search concise public site records. Use a returned ID or URL with get_content.',inputSchema:{...e,properties:{query:{type:'string',minLength:1,maxLength:200},limit:{type:'integer',minimum:1,maximum:10},content_type:{type:'string',minLength:1,maxLength:64}},required:['query']},execute:H,annotations:a},",
+		"{name:'list_content',description:'List public records from one discovered type, optionally filtered by taxonomy labels.',inputSchema:{...e,properties:{type:{type:'string',minLength:1,maxLength:64},taxonomy:{type:'object',maxProperties:3,additionalProperties:{type:'array',minItems:1,maxItems:5,items:{type:'string',minLength:1,maxLength:128}}},limit:{type:'integer',minimum:1,maximum:10}},required:['type']},execute:B,annotations:a},",
+		"{name:'get_content',description:'Retrieve one known public record by exact Kujo ID or same-origin URL. Returns no HTML.',inputSchema:{...e,properties:{id:{type:'string',minLength:1,maxLength:256},url:{type:'string',minLength:1,maxLength:2048}},oneOf:[{required:['id']},{required:['url']}]},execute:G,annotations:a}],r=new AbortController;addEventListener('pagehide',()=>r.abort(),{once:true});Promise.all(t.map(x=>m.registerTool(x,{signal:r.signal}))).catch(()=>{})})();",
+		""
+	], "\n")
+}
+
+func inject_webmcp_runtime(html, settings, route) {
+	if !settings["webmcp"] || index_of(html, "data-kujo-webmcp") >= 0 {
+		return html
+	}
+	runtime_file := "assets/js/kujo-webmcp.js"
+	if settings["minify"] {
+		runtime_file = "assets/js/kujo-webmcp.min.js"
+	}
+	prefix := route_prefix(route)
+	tag := "<script src=\"" + xml_escape(prefix + runtime_file) + "\" data-kujo-webmcp data-kujo-site-index=\"" + xml_escape(prefix + ".well-known/kujo-site-index.json") + "\" defer></script>"
+	body_end := index_of(to_lower(html), "</body>")
+	if body_end >= 0 {
+		return substring(html, 0, body_end) + tag + substring(html, body_end, len(html))
+	}
+	html_end := index_of(to_lower(html), "</html>")
+	if html_end >= 0 {
+		return substring(html, 0, html_end) + tag + substring(html, html_end, len(html))
+	}
+	return html + tag
+}
+
+func featured_image_html_tag(featured_image_url, title) {
+	url := trim(featured_image_url)
+	if len(url) == 0 {
+		return ""
+	}
+	safe_url := xml_escape(url)
+	safe_title := xml_escape(title)
+	return "<img src=\"" + safe_url + "\" alt=\"Featured image for " + safe_title + "\" class=\"featured-image\" loading=\"lazy\" decoding=\"async\">"
+}
+
+func render_layout(layout_template, settings, route, page_title, meta_description, navigation, content, page_meta) {
+	# Delegates to the native renderer (compiled once, byte-identical to the
+	# previous interpreted body, which is preserved as render_layout_interpreted).
+	# Kujo 1.5's native JSON-LD encoder does not escape HTML script delimiters or
+	# every JSON control character. Keep its fast path for ordinary metadata and
+	# use the compatible renderer for those characters or template markers.
+	metadata_json := to_json([settings["site_title"], settings["site_tagline"], settings["site_url"], page_title, meta_description, page_meta])
+	html := ""
+	if contains(metadata_json, "<") || contains(metadata_json, "{{") || contains(metadata_json, "\\u00") || contains(metadata_json, "\\b") || contains(metadata_json, "\\f") {
+		html = render_layout_interpreted(layout_template, settings, route, page_title, meta_description, navigation, content, page_meta)
+	} else {
+		html = render_layout_native(layout_template, settings, route, page_title, meta_description, navigation, content, page_meta)
+	}
+	webmcp_skip := false
+	if has_key(page_meta, "webmcp_skip") {
+		webmcp_skip = parse_bool_value(page_meta["webmcp_skip"], false)
+	}
+	if settings["webmcp"] && !webmcp_skip {
+		html = inject_webmcp_runtime(html, settings, route)
+	}
+	return html
+}
+
+func render_layout_interpreted(layout_template, settings, route, page_title, meta_description, navigation, content, page_meta) {
+	prefix := route_prefix(route)
+	style_file := "assets/css/style.css"
+	if settings["minify"] {
+		style_file := "assets/css/style.min.css"
+	}
+
+	seo_title := meta_string(page_meta, "seo_title", page_title)
+	seo_description := meta_string(page_meta, "seo_description", meta_description)
+	if len(seo_description) == 0 {
+		seo_description = trim(to_string(settings["site_tagline"]))
+	}
+	seo_keywords := meta_string(page_meta, "seo_keywords", "SSG, Static Site Generator")
+	author_meta := meta_string(page_meta, "author", "Robert DeVore")
+	lang := to_lower(meta_string(page_meta, "lang", "en"))
+	if len(lang) == 0 {
+		lang = "en"
+	}
+
+	site_url := trim(to_string(settings["site_url"]))
+	canonical_url := meta_string(page_meta, "canonical", "")
+	if len(canonical_url) == 0 {
+		canonical_url = route_absolute_url(site_url, route)
+	} else if len(site_url) > 0 && !starts_with(canonical_url, "http://") && !starts_with(canonical_url, "https://") && !starts_with(canonical_url, "//") {
+		site_root := trim(site_url)
+		if ends_with(site_root, "/") {
+			site_root = substring(site_root, 0, len(site_root) - 1)
+		}
+		if starts_with(canonical_url, "/") {
+			canonical_url = site_root + canonical_url
+		} else {
+			canonical_url = site_root + "/" + canonical_url
+		}
+	}
+
+	og_url := canonical_url
+	if len(og_url) == 0 {
+		og_url = route_absolute_url(site_url, route)
+	}
+
+	raw_featured := meta_string(page_meta, "featured_image", "")
+	# Social cards need absolute URLs; fall back to a prefix-relative path
+	# only when no site_url is configured.
+	social_image := absolute_media_url(raw_featured, site_url)
+	if len(social_image) == 0 {
+		social_image = resolve_media_url(raw_featured, prefix)
+	}
+	canonical_tag := ""
+	if len(canonical_url) > 0 {
+		canonical_tag = "<link rel=\"canonical\" href=\"" + xml_escape(canonical_url) + "\">"
+	}
+	og_image_tag := ""
+	twitter_image_tag := ""
+	if len(social_image) > 0 {
+		safe_image := xml_escape(social_image)
+		og_image_tag = "<meta property=\"og:image\" content=\"" + safe_image + "\">"
+		twitter_image_tag = "<meta name=\"twitter:image\" content=\"" + safe_image + "\">"
+	}
+
+	og_type := to_lower(meta_string(page_meta, "og_type", "website"))
+	if og_type != "article" {
+		og_type = "website"
+	}
+	og_locale := replace(lang, "-", "_")
+	if og_locale == "en" {
+		og_locale = "en_US"
+	}
+
+	# article:published_time + datePublished for posts.
+	published_iso := trim(meta_string(page_meta, "published_iso", ""))
+	og_article_tags := ""
+	if og_type == "article" {
+		if len(published_iso) > 0 {
+			og_article_tags = og_article_tags + "<meta property=\"article:published_time\" content=\"" + xml_escape(published_iso) + "\">"
+		}
+		if len(author_meta) > 0 {
+			og_article_tags = og_article_tags + "<meta property=\"article:author\" content=\"" + xml_escape(author_meta) + "\">"
+		}
+	}
+
+	# RSS autodiscovery only when an aux feed is actually produced.
+	rss_link_tag := ""
+	if len(site_url) > 0 && !settings["no_aux"] {
+		rss_link_tag = "<link rel=\"alternate\" type=\"application/rss+xml\" title=\"" + html_escape(settings["site_title"]) + "\" href=\"" + prefix + "feed/index.xml\">"
+	}
+
+	# Lightweight SVG favicon generated alongside the site (see build_site).
+	favicon_tag := "<link rel=\"icon\" type=\"image/svg+xml\" href=\"" + prefix + "favicon.svg\">"
+
+	# JSON-LD structured data.
+	schema_type := "WebSite"
+	if og_type == "article" {
+		schema_type = "BlogPosting"
+	}
+	json_ld_parts := [
+		"\"@context\":\"https://schema.org\"",
+		"\"@type\":\"" + schema_type + "\"",
+		"\"headline\":\"" + json_escape(seo_title) + "\"",
+		"\"name\":\"" + json_escape(seo_title) + "\"",
+		"\"description\":\"" + json_escape(seo_description) + "\"",
+		"\"url\":\"" + json_escape(og_url) + "\""
+	]
+	if len(social_image) > 0 {
+		json_ld_parts = push(json_ld_parts, "\"image\":\"" + json_escape(social_image) + "\"")
+	}
+	if og_type == "article" {
+		json_ld_parts = push(json_ld_parts, "\"author\":{\"@type\":\"Person\",\"name\":\"" + json_escape(author_meta) + "\"}")
+		if len(published_iso) > 0 {
+			json_ld_parts = push(json_ld_parts, "\"datePublished\":\"" + json_escape(published_iso) + "\"")
+		}
+	}
+	json_ld_parts = push(json_ld_parts, "\"publisher\":{\"@type\":\"Organization\",\"name\":\"" + json_escape(settings["site_title"]) + "\"}")
+	json_ld := "<script type=\"application/ld+json\">{" + join(json_ld_parts, ",") + "}</script>"
+
+	computed_title := build_page_title(seo_title, settings["site_title"])
+	safe_title := xml_escape(computed_title)
+	safe_seo_title := xml_escape(seo_title)
+	safe_description := xml_escape(seo_description)
+	safe_keywords := xml_escape(seo_keywords)
+	safe_author := xml_escape(author_meta)
+	safe_og_url := xml_escape(og_url)
+	safe_site_title := html_escape(settings["site_title"])
+	safe_site_tagline := html_escape(settings["site_tagline"])
+
+	html := apply_template(
+		layout_template,
+		{
+			"site_name": safe_site_title,
+			"site_title": safe_site_title,
+			"site_tagline": safe_site_tagline,
+			"navigation": navigation,
+			"relative_path": prefix,
+			"home_path": prefix + "index.html",
+			"page_title": safe_title,
+			"meta_description": safe_description,
+			"seo_title": safe_seo_title,
+			"seo_description": safe_description,
+			"seo_keywords": safe_keywords,
+			"author_meta": safe_author,
+			"canonical_tag": canonical_tag,
+			"og_url": safe_og_url,
+			"og_type": og_type,
+			"og_locale": xml_escape(og_locale),
+			"og_image_tag": og_image_tag,
+			"og_article_tags": og_article_tags,
+			"twitter_image_tag": twitter_image_tag,
+			"rss_link_tag": rss_link_tag,
+			"favicon_tag": favicon_tag,
+			"json_ld": json_ld,
+			"lang": lang,
+			"stylesheet_path": prefix + style_file,
+			"content": content
+		}
+	)
+	return html
+}
+
+func write_route_page(output_dir, route, html) {
+	clean_route := normalize_route(route)
+	if len(clean_route) == 0 {
+		write_file(path_join(output_dir, "index.html"), html)
+		return null
+	}
+	dir_route := substring(clean_route, 0, len(clean_route) - 1)
+	full_dir := path_join(output_dir, dir_route)
+	ensure_dir(full_dir)
+	write_file(path_join(full_dir, "index.html"), html)
+}
+
+func write_route_alias(output_dir, route, enabled) {
+	if !enabled {
+		return null
+	}
+	clean_route := normalize_route(route)
+	if len(clean_route) == 0 {
+		return null
+	}
+
+	route_no_trailing := substring(clean_route, 0, len(clean_route) - 1)
+	alias_path := path_join(output_dir, route_no_trailing + ".html")
+	ensure_dir(dirname(alias_path))
+
+	target_url := "/" + clean_route
+	safe_target_url := xml_escape(target_url)
+	alias_html := "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta http-equiv=\"refresh\" content=\"0; url=" + safe_target_url + "\"><link rel=\"canonical\" href=\"" + safe_target_url + "\"></head><body><main id=\"main-content\"><p>Redirecting to <a href=\"" + safe_target_url + "\">" + safe_target_url + "</a></p></main></body></html>"
+	write_file(alias_path, alias_html)
+}
+
+func delete_tree(path) {
+	if !path_exists(path) {
+		return null
+	}
+	if path_is_symlink(path) {
+		delete_file(path)
+		return null
+	}
+	if path_is_file(path) {
+		delete_file(path)
+		return null
+	}
+
+	entries := list_dir(path)
+	entry_idx := 0
+	loop {
+		if entry_idx >= len(entries) {
+			break
+		}
+
+		entry := entries[entry_idx]
+		entry_idx := entry_idx + 1
+		child := path_join(path, entry)
+		if path_is_symlink(child) {
+			delete_file(child)
+		} else if path_is_dir(child) {
+			delete_tree(child)
+		} else {
+			delete_file(child)
+		}
+	}
+	os_rmdir(path)
+}
+
+func copy_tree(src, dst) {
+	if !path_exists(src) {
+		return null
+	}
+	if path_is_file(src) {
+		ensure_dir(dirname(dst))
+		copy_file(src, dst)
+		return null
+	}
+
+	ensure_dir(dst)
+	entries := list_dir(src)
+	entry_idx := 0
+	loop {
+		if entry_idx >= len(entries) {
+			break
+		}
+
+		entry := entries[entry_idx]
+		entry_idx := entry_idx + 1
+		# Never publish OS/editor junk into the generated site.
+		if entry == ".DS_Store" || entry == "Thumbs.db" {
+			continue
+		}
+		src_path := path_join(src, entry)
+		dst_path := path_join(dst, entry)
+		if path_is_symlink(src_path) {
+			print("Warning: Skipped symlink while copying assets: " + src_path)
+		} else if path_is_dir(src_path) {
+			copy_tree(src_path, dst_path)
+		} else {
+			ensure_dir(dirname(dst_path))
+			copy_file(src_path, dst_path)
+		}
+	}
+}
+
+# The CLI is pinned so generated assets do not depend on ambient tool versions.
+func resolve_minifier() {
+	binary := trim(env("SSG_ESBUILD_BIN"))
+	command := [binary]
+	if len(binary) == 0 {
+		command = ["esbuild"]
+		if path_exists("node_modules/esbuild/bin/esbuild") {
+			# Invoke the portable Node entry point, not npm's OS-specific .bin shim.
+			command = ["node", path_absolute("node_modules/esbuild/bin/esbuild")]
+		}
+	}
+	instructions := "Error: minification requires esbuild 0.28.2. Run npm ci --ignore-scripts in the SSG/site directory, or set SSG_ESBUILD_BIN to that version's executable."
+	try {
+		result := spawn_process(push(command, "--version"), {"timeout_ms": 10000, "max_output_bytes": 65536})
+		if !result.success || trim(result.stdout) != "0.28.2" || result.stdout_truncated || result.stderr_truncated {
+			print(instructions)
+			exit(1)
+		}
+	} except err {
+		print(instructions + "\n" + to_string(err))
+		exit(1)
+	}
+	return command
+}
+
+func minify_assets_recursive(path, command) {
+	if !path_exists(path) { return null }
+	if path_is_symlink(path) {
+		print("Error: refusing to minify symlink: " + path)
+		exit(1)
+	}
+	if path_is_dir(path) {
+		for entry in list_dir(path) {
+			minify_assets_recursive(path_join(path, entry), command)
+		}
+		return null
+	}
+	file_name := basename(path)
+	if contains(file_name, ".min.") { return null }
+	if ends_with(file_name, ".css") || ends_with(file_name, ".js") {
+		ext := path_extension(file_name)
+		base := substring(file_name, 0, len(file_name) - len(ext) - 1)
+		destination := path_join(dirname(path), base + ".min." + ext)
+		if path_exists(destination) {
+			print("Error: minified destination already exists: " + destination)
+			exit(1)
+		}
+		# Parse and print without bundling, identifier renaming, syntax rewrites,
+		# or dropping legal comments. Absolute input paths cannot become flags.
+		minify_command := command
+		for argument in [path_absolute(path), "--minify-whitespace", "--platform=neutral", "--legal-comments=inline", "--charset=utf8", "--log-level=warning", "--outfile=" + absolute_config_path(destination)] {
+			minify_command = push(minify_command, argument)
+		}
+		result := spawn_process(minify_command, {"timeout_ms": 300000, "max_output_bytes": 1048576})
+		if !result.success || result.stdout_truncated || result.stderr_truncated {
+			if path_exists(destination) { delete_file(destination) }
+			print("Error: could not minify " + path + "\n" + result.stdout + result.stderr)
+			exit(1)
+		}
+		if len(result.stderr) > 0 { print(result.stderr) }
+	}
+}
+
+func font_is_bundled(key) {
+	return key == "bree serif" || key == "inter" || key == "quicksand" || key == "open sans"
+}
+
+func font_generic_fallback(key) {
+	if key == "bree serif" {
+		return "serif"
+	}
+	return "sans-serif"
+}
+
+func bundled_font_face_lines(family, key) {
+	lines := []
+	if key == "bree serif" {
+		lines = push(lines, "@font-face { font-family: 'Bree Serif'; font-style: normal; font-weight: 400; font-display: swap; src: url('../fonts/bree-serif-latin-400.woff2') format('woff2'); }")
+		lines = push(lines, "@font-face { font-family: 'Bree Serif'; font-style: normal; font-weight: 700; font-display: swap; src: url('../fonts/bree-serif-latin-400.woff2') format('woff2'); }")
+	} else if key == "inter" {
+		lines = push(lines, "@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('../fonts/inter-latin-400.woff2') format('woff2'); }")
+		lines = push(lines, "@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('../fonts/inter-latin-700.woff2') format('woff2'); }")
+	} else if key == "quicksand" {
+		lines = push(lines, "@font-face { font-family: 'Quicksand'; font-style: normal; font-weight: 400; font-display: swap; src: url('../fonts/quicksand-latin.woff2') format('woff2'); }")
+	} else if key == "open sans" {
+		lines = push(lines, "@font-face { font-family: 'Open Sans'; font-style: normal; font-weight: 400; font-display: swap; src: url('../fonts/open-sans-latin.woff2') format('woff2'); }")
+	}
+	lines = push(lines, "")
+	return lines
+}
+
+# Download a Google Font family (any family) and provision local woff2 files.
+# Returns {"ok": bool, "lines": [...], "error": str}. Prefers the latin subset
+# and caches downloads so repeat builds are deterministic and offline.
+func try_download_google_font(family, output_fonts_dir, cache_fonts_dir) {
+	out := {"ok": false, "lines": [], "error": ""}
+	slug := clean_slug(family)
+	api_family := replace(family, " ", "+")
+	url := "https://fonts.googleapis.com/css2?family=" + api_family + ":wght@400;700&display=swap"
+	ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+	css := ""
+	fetch_ok := false
+	fetch_error := "request failed"
+	try {
+		request_result := http_request(url, {
+			"headers": {"User-Agent": ua},
+			"max_response_bytes": 1048576,
+			"destination_policy": "deny_private",
+			"pin_dns": true,
+			"redirects": "none",
+			"timeout": 30
+		})
+		match request_result {
+			case Ok(resp): {
+				status := resp["status"]
+				if status == 200 {
+					css = to_string(resp["body"])
+					fetch_ok = true
+				} else {
+					fetch_error = "HTTP " + to_string(status)
+				}
+			}
+			case Err(request_err): {
+				fetch_error = safe_error_text(request_err)
+			}
+		}
+	} except err {
+		fetch_error = safe_error_text(err)
+	}
+	if !fetch_ok {
+		out["error"] = fetch_error
+		return out
+	}
+
+	if len(css) == 0 || index_of(css, "@font-face") < 0 {
+		out["error"] = "no @font-face in response"
+		return out
+	}
+
+	# Pick one woff2 URL per weight, preferring the latin subset (U+0000 range).
+	blocks := regex_split(css, "@font-face")
+	chosen := {}
+	bi := 0
+	loop {
+		if bi >= len(blocks) {
+			break
+		}
+		block := blocks[bi]
+		bi := bi + 1
+
+		urls := regex_find_all(block, "https://[^)\\s\"']+\\.woff2")
+		if len(urls) == 0 {
+			continue
+		}
+		font_url := urls[0]
+		weights := regex_find_all(block, "font-weight:[ ]*[0-9]+")
+		weight := "400"
+		if len(weights) > 0 {
+			digits := regex_replace(weights[0], "[^0-9]", "")
+			if len(digits) > 0 {
+				weight = digits
+			}
+		}
+		if index_of(block, "U+0000") >= 0 {
+			chosen[weight] = font_url
+		} else if has_key(chosen, weight) == 0 {
+			chosen[weight] = font_url
+		}
+	}
+
+	weight_keys := sort(keys(chosen))
+	if len(weight_keys) == 0 {
+		out["error"] = "no woff2 URLs found"
+		return out
+	}
+
+	lines := []
+	wi := 0
+	loop {
+		if wi >= len(weight_keys) {
+			break
+		}
+		weight := weight_keys[wi]
+		wi := wi + 1
+		font_url := chosen[weight]
+		file_name := slug + "-" + weight + ".woff2"
+		output_path := path_join(output_fonts_dir, file_name)
+		cache_path := path_join(cache_fonts_dir, file_name)
+
+		ensured := false
+		if path_exists(cache_path) {
+			try {
+				cached_bytes := read_binary_file(cache_path)
+				write_binary_file(output_path, cached_bytes)
+				ensured = true
+			} except err {
+				ensured = false
+			}
+		}
+		if !ensured {
+			try {
+				http_download_file(font_url, output_path, {
+					"max_bytes": 8388608,
+					"timeout_ms": 30000,
+					"destination_policy": "deny_private",
+					"pin_dns": true,
+					"redirects": "none",
+					"overwrite": false
+				})
+				ensure_dir(cache_fonts_dir)
+				try {
+					copy_file(output_path, cache_path)
+				} except cache_err {
+				}
+				ensured = true
+			} except err {
+				out["error"] = "download failed: " + safe_error_text(err)
+				return out
+			}
+		}
+
+		lines = push(lines, "@font-face { font-family: '" + family + "'; font-style: normal; font-weight: " + weight + "; font-display: swap; src: url('../fonts/" + file_name + "') format('woff2'); }")
+	}
+	lines = push(lines, "")
+
+	out["ok"] = true
+	out["lines"] = lines
+	return out
+}
+
+# Resolve a requested font family to renderable @font-face lines. Bundled
+# families are served offline; any other family is fetched from Google Fonts,
+# falling back to a bundled default if the network/capability is unavailable.
+func resolve_font_family(requested, default_family, settings, output_fonts_dir, cache_fonts_dir) {
+	family := trim(to_string(requested))
+	if len(family) == 0 {
+		family = default_family
+	}
+	key := to_lower(family)
+	if font_is_bundled(key) {
+		return {"family": family, "fallback": font_generic_fallback(key), "lines": bundled_font_face_lines(family, key)}
+	}
+
+	result := try_download_google_font(family, output_fonts_dir, cache_fonts_dir)
+	if result["ok"] {
+		return {"family": family, "fallback": "sans-serif", "lines": result["lines"]}
+	}
+
+	warning := "Warning: could not provision Google Font '" + family + "' (" + result["error"] + "); falling back to '" + default_family + "'."
+	warning = warning + " Font downloads need outbound network access (granted by default; in --untrusted mode add --allow-net-client)."
+	print(warning)
+	default_key := to_lower(default_family)
+	return {"family": default_family, "fallback": font_generic_fallback(default_key), "lines": bundled_font_face_lines(default_family, default_key)}
+}
+
+func is_safe_font_family(value) {
+	family := trim(to_string(value))
+	if len(family) == 0 || len(family) > 80 {
+		return false
+	}
+	return len(regex_replace(family, "[A-Za-z0-9 ._-]", "")) == 0
+}
+
+func generate_fonts_css(settings) {
+	fonts := to_string_array(settings["fonts"])
+	title_font := "Bree Serif"
+	body_font := "Inter"
+	if len(fonts) > 0 {
+		candidate_title := trim(to_string(fonts[0]))
+		if len(candidate_title) > 0 {
+			title_font = candidate_title
+		}
+	}
+	if len(fonts) > 1 {
+		candidate_body := trim(to_string(fonts[1]))
+		if len(candidate_body) > 0 {
+			body_font = candidate_body
+		}
+	}
+
+	css_dir := path_join(settings["output"], "assets/css")
+	ensure_dir(css_dir)
+	output_fonts_dir := path_join(settings["output"], "assets/fonts")
+	ensure_dir(output_fonts_dir)
+	# Downloaded Google Fonts are cached outside the asset tree so repeat builds
+	# stay offline and deterministic without polluting source-controlled assets.
+	cache_fonts_dir := ".cache/fonts"
+
+	resolved_title := resolve_font_family(title_font, "Bree Serif", settings, output_fonts_dir, cache_fonts_dir)
+	resolved_body := resolve_font_family(body_font, "Inter", settings, output_fonts_dir, cache_fonts_dir)
+
+	lines := ["/* Generated by Kujo SSG */", ""]
+	emitted := {}
+	slots := [resolved_title, resolved_body]
+	slot_idx := 0
+	loop {
+		if slot_idx >= len(slots) {
+			break
+		}
+		slot := slots[slot_idx]
+		slot_idx := slot_idx + 1
+		slot_key := to_lower(slot["family"])
+		if has_key(emitted, slot_key) {
+			continue
+		}
+		emitted[slot_key] = true
+		slot_lines := slot["lines"]
+		line_idx := 0
+		loop {
+			if line_idx >= len(slot_lines) {
+				break
+			}
+			lines = push(lines, slot_lines[line_idx])
+			line_idx := line_idx + 1
+		}
+	}
+
+	title_css_family := resolved_title["family"]
+	body_css_family := resolved_body["family"]
+	title_fallback := resolved_title["fallback"]
+	body_fallback := resolved_body["fallback"]
+
+	lines = push(lines, "body { font-family: '" + body_css_family + "', " + body_fallback + "; }")
+	lines = push(lines, "h1, h2, h3, h4, h5, h6, .title-font { font-family: '" + title_css_family + "', " + title_fallback + "; }")
+	lines = push(lines, ".font-body-light { font-family: '" + body_css_family + "', " + body_fallback + "; font-weight: 300; }")
+	lines = push(lines, ".font-heading-bold { font-family: '" + title_css_family + "', " + title_fallback + "; font-weight: 700; }")
+
+	write_file(path_join(css_dir, "fonts.css"), join(lines, "\n") + "\n")
+}
+
+func pagination_page_link(page, current_page, base_path) {
+	route := base_path
+	if page != 1 {
+		route = base_path + "page/" + to_string(page) + "/"
+	}
+	if page == current_page {
+		return "<strong aria-current=\"page\">" + to_string(page) + "</strong>"
+	}
+	return "<a href=\"/" + route + "\">" + to_string(page) + "</a>"
+}
+
+# Windowed pagination (first … current-2..current+2 … last). O(1) per page
+# instead of O(total_pages), which keeps large-site listing generation linear
+# and produces a usable control instead of a thousand-link bar.
+func build_pagination_links(current_page, total_pages, base_path) {
+	if total_pages <= 1 {
+		return ""
+	}
+	html := "<nav class=\"pagination\" aria-label=\"Pagination\">"
+
+	if current_page > 1 {
+		prev_route := base_path
+		if current_page - 1 != 1 {
+			prev_route = base_path + "page/" + to_string(current_page - 1) + "/"
+		}
+		html = html + "<a href=\"/" + prev_route + "\" rel=\"prev\">Previous</a>"
+	}
+
+	delta := 2
+	window_start := current_page - delta
+	if window_start < 2 {
+		window_start = 2
+	}
+	window_end := current_page + delta
+	if window_end > total_pages - 1 {
+		window_end = total_pages - 1
+	}
+
+	html = html + pagination_page_link(1, current_page, base_path)
+	if window_start > 2 {
+		html = html + "<span class=\"pagination-gap\" aria-hidden=\"true\">…</span>"
+	}
+	page := window_start
+	loop {
+		if page > window_end {
+			break
+		}
+		html = html + pagination_page_link(page, current_page, base_path)
+		page = page + 1
+	}
+	if window_end < total_pages - 1 {
+		html = html + "<span class=\"pagination-gap\" aria-hidden=\"true\">…</span>"
+	}
+	html = html + pagination_page_link(total_pages, current_page, base_path)
+
+	if current_page < total_pages {
+		next_route := base_path + "page/" + to_string(current_page + 1) + "/"
+		html = html + "<a href=\"/" + next_route + "\" rel=\"next\">Next</a>"
+	}
+
+	html = html + "</nav>"
+	return html
+}
+
+func listing_card_media_url(path_value) {
+	media := trim(path_value)
+	if len(media) == 0 {
+		return ""
+	}
+	loop {
+		if starts_with(media, "../") {
+			media := substring(media, 3, len(media))
+			continue
+		}
+		if starts_with(media, "./") {
+			media := substring(media, 2, len(media))
+			continue
+		}
+		break
+	}
+	if starts_with(media, "http://") || starts_with(media, "https://") || starts_with(media, "//") || starts_with(media, "/") {
+		return media
+	}
+	return "/" + media
+}
+
+func listing_card_tags_html(terms) {
+	if !is_array(terms) || len(terms) == 0 {
+		return ""
+	}
+
+	html := ""
+	count := 0
+	term_idx := 0
+	loop {
+		if term_idx >= len(terms) {
+			break
+		}
+
+		term := terms[term_idx]
+		term_idx := term_idx + 1
+		if count >= 3 {
+			break
+		}
+		safe_term := html_escape(to_string(term))
+		html := html + "<span class=\"tag listing-tag\">" + safe_term + "</span>"
+		count := count + 1
+	}
+	return html
+}
+
+func listing_card_html(route, title, excerpt, featured_image, terms, action_label) {
+	# Delegates to the native renderer (byte-identical to listing_card_html_interpreted).
+	return render_listing_card(route, title, excerpt, featured_image, terms, action_label)
+}
+
+func listing_card_html_interpreted(route, title, excerpt, featured_image, terms, action_label) {
+	safe_href := xml_escape(route_to_path(route))
+	safe_title := html_escape(title)
+	safe_excerpt := html_escape(excerpt)
+
+	media_url := listing_card_media_url(featured_image)
+	safe_media_url := xml_escape(media_url)
+	title_attr := xml_escape(title)
+
+	tags_html := listing_card_tags_html(terms)
+	tags_block := ""
+	if len(tags_html) > 0 {
+		tags_block = "<div class=\"listing-card-tags\">" + tags_html + "</div>"
+	}
+
+	button_text := trim(action_label)
+	if len(button_text) == 0 {
+		button_text = "Read More"
+	}
+	safe_button_text := html_escape(button_text)
+
+	media_block := "<a class=\"listing-card-image-link\" href=\"" + safe_href + "\"><span class=\"listing-card-image-placeholder\" aria-hidden=\"true\"></span></a>"
+	if len(media_url) > 0 {
+		media_block = "<a class=\"listing-card-image-link\" href=\"" + safe_href + "\"><img src=\"" + safe_media_url + "\" alt=\"Featured image for " + title_attr + "\" class=\"listing-card-image\" loading=\"lazy\" decoding=\"async\"></a>"
+	}
+
+	return "<li class=\"listing-card\">" + media_block + "<div class=\"listing-card-body\">" + tags_block + "<h2 class=\"listing-card-title\"><a href=\"" + safe_href + "\" class=\"text-links\">" + safe_title + "</a></h2><p class=\"listing-card-excerpt\">" + safe_excerpt + "</p><a href=\"" + safe_href + "\" class=\"listing-card-button\">" + safe_button_text + "</a></div></li>"
+}
+
+func pad2(n) {
+	s := to_string(n)
+	if len(s) < 2 {
+		return "0" + s
+	}
+	return s
+}
+
+func month_index_from_name(name) {
+	key := to_lower(trim(name))
+	if len(key) > 3 {
+		key = substring(key, 0, 3)
+	}
+	abbr := ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+	i := 0
+	loop {
+		if i >= len(abbr) {
+			break
+		}
+		if abbr[i] == key {
+			return i + 1
+		}
+		i := i + 1
+	}
+	return 0
+}
+
+# Parse a frontmatter date into normalized parts. Accepts ISO (YYYY-MM-DD,
+# optionally with a T/space time), YYYY/MM/DD, MM/DD/YYYY, "Month DD, YYYY",
+# and "DD Month YYYY". Returns a dict; "valid" is false for unparseable input.
+func parse_post_date(raw) {
+	invalid := {"valid": false, "year": 0, "month": 0, "day": 0, "sort_key": 0, "display": "", "rfc822": "", "iso": ""}
+	text := trim(to_string(raw))
+	if len(text) == 0 {
+		return invalid
+	}
+
+	year := 0
+	month := 0
+	day := 0
+
+	normalized := replace(text, ",", " ")
+	raw_tokens := split(normalized, " ")
+	tokens := []
+	ti := 0
+	loop {
+		if ti >= len(raw_tokens) {
+			break
+		}
+		tk := trim(raw_tokens[ti])
+		ti := ti + 1
+		if len(tk) > 0 {
+			tokens = push(tokens, tk)
+		}
+	}
+	if len(tokens) == 0 {
+		return invalid
+	}
+
+	first := tokens[0]
+	if index_of(first, "-") >= 0 {
+		date_only := split(first, "T")[0]
+		parts := split(date_only, "-")
+		if len(parts) >= 3 {
+			year = parse_int_value(parts[0], 0)
+			month = parse_int_value(parts[1], 0)
+			day = parse_int_value(parts[2], 0)
+		}
+	} else if index_of(first, "/") >= 0 {
+		parts := split(first, "/")
+		if len(parts) >= 3 {
+			if len(parts[0]) == 4 {
+				year = parse_int_value(parts[0], 0)
+				month = parse_int_value(parts[1], 0)
+				day = parse_int_value(parts[2], 0)
+			} else {
+				month = parse_int_value(parts[0], 0)
+				day = parse_int_value(parts[1], 0)
+				year = parse_int_value(parts[2], 0)
+			}
+		}
+	} else {
+		leading_month := month_index_from_name(tokens[0])
+		if leading_month > 0 && len(tokens) >= 3 {
+			month = leading_month
+			day = parse_int_value(tokens[1], 0)
+			year = parse_int_value(tokens[2], 0)
+		} else if len(tokens) >= 3 {
+			day = parse_int_value(tokens[0], 0)
+			month = month_index_from_name(tokens[1])
+			year = parse_int_value(tokens[2], 0)
+		}
+	}
+
+	if year <= 0 || month < 1 || month > 12 || day < 1 {
+		return invalid
+	}
+	days_in_month := [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+	is_leap_year := year % 400 == 0 || (year % 4 == 0 && year % 100 != 0)
+	if is_leap_year {
+		days_in_month[1] = 29
+	}
+	if day > days_in_month[month - 1] {
+		return invalid
+	}
+
+	full_names := ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+	abbr_names := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+	display := full_names[month - 1] + " " + to_string(day) + ", " + to_string(year)
+
+	# Sakamoto's algorithm for day-of-week (0 = Sunday).
+	sakamoto := [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+	y := year
+	if month < 3 {
+		y = y - 1
+	}
+	dow := (y + y / 4 - y / 100 + y / 400 + sakamoto[month - 1] + day) % 7
+	dow_names := ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+	rfc822 := dow_names[dow] + ", " + pad2(day) + " " + abbr_names[month - 1] + " " + to_string(year) + " 00:00:00 +0000"
+
+	return {
+		"valid": true,
+		"year": year,
+		"month": month,
+		"day": day,
+		"sort_key": year * 10000 + month * 100 + day,
+		"display": display,
+		"rfc822": rfc822,
+		"iso": to_string(year) + "-" + pad2(month) + "-" + pad2(day)
+	}
+}
+
+func post_sort_before(a, b, sort_by) {
+	if sort_by == "title" {
+		return to_lower(a["title"]) < to_lower(b["title"])
+	}
+	if sort_by == "author" {
+		return to_lower(a["author"]) < to_lower(b["author"])
+	}
+	if sort_by == "order" {
+		return a["order"] < b["order"]
+	}
+	# Default date sort: newest first, by normalized numeric key.
+	return a["date_sort_key"] > b["date_sort_key"]
+}
+
+func sort_posts(posts, sort_by) {
+	sorted_posts := posts
+	n := len(sorted_posts)
+	i := 1
+	loop {
+		if i >= n {
+			break
+		}
+
+		current := sorted_posts[i]
+		j := i
+		loop {
+			if j <= 0 {
+				break
+			}
+
+			prev := sorted_posts[j - 1]
+			if !post_sort_before(current, prev, sort_by) {
+				break
+			}
+
+			sorted_posts[j] = prev
+			j := j - 1
+		}
+
+		sorted_posts[j] = current
+		i := i + 1
+	}
+	return sorted_posts
+}
+
+# --- Scale-friendly accumulation helpers -------------------------------------
+# Kujo arrays are copy-on-write, so `arr = push(arr, x)` in a hot loop is O(n^2)
+# and an in-language sort is O(n^3). For large sites we instead accumulate
+# records into a string (string concat is amortized O(n)), build the array in a
+# single `split` call, and sort once with the native O(n log n) `sort`.
+
+func pad_number(value, width) {
+	s := to_string(value)
+	loop {
+		if len(s) >= width {
+			break
+		}
+		s = "0" + s
+	}
+	return s
+}
+
+func invert_decimal_digits(value) {
+	digits := to_string(value)
+	inverted := ""
+	i := 0
+	loop {
+		if i >= len(digits) {
+			break
+		}
+		digit := substring(digits, i, i + 1)
+		i := i + 1
+		position := index_of("0123456789", digit)
+		if position >= 0 {
+			inverted = inverted + substring("9876543210", position, position + 1)
+		}
+	}
+	return inverted
+}
+
+# Lexicographic sort prefix so a single native string sort yields the requested
+# order. Date is descending (newest first); title/author ascending; order asc.
+func post_sort_prefix(sort_by, date_sort_key, title, author, order) {
+	if sort_by == "title" {
+		return regex_replace(to_lower(title), "[\\t\\r\\n]+", " ")
+	}
+	if sort_by == "author" {
+		return regex_replace(to_lower(author), "[\\t\\r\\n]+", " ")
+	}
+	if sort_by == "order" {
+		if order < 0 {
+			magnitude := substring(to_string(order), 1, len(to_string(order)))
+			return "0" + pad_number(20 - len(magnitude), 2) + invert_decimal_digits(magnitude)
+		}
+		digits := to_string(order)
+		return "1" + pad_number(len(digits), 2) + digits
+	}
+	return pad_number(99999999 - date_sort_key, 8)
+}
+
+# changefreq/priority + lastmod for a single sitemap entry. Emitted incrementally
+# as a string instead of accumulating a routes array.
+func sitemap_url_entry(site_url, route, lastmod_iso, blog_prefix) {
+	url := site_url + "/"
+	if len(route) > 0 {
+		url = site_url + "/" + route
+	}
+
+	changefreq := "monthly"
+	priority := "0.7"
+	if len(route) == 0 {
+		changefreq = "weekly"
+		priority = "1.0"
+	} else if len(blog_prefix) > 0 && route == blog_prefix {
+		changefreq = "daily"
+		priority = "0.9"
+	} else if len(blog_prefix) > 0 && starts_with(route, blog_prefix + "page/") {
+		changefreq = "weekly"
+		priority = "0.6"
+	} else if len(blog_prefix) > 0 && starts_with(route, blog_prefix) {
+		changefreq = "monthly"
+		priority = "0.8"
+	} else if starts_with(route, "page/") {
+		changefreq = "weekly"
+		priority = "0.6"
+	}
+
+	entry := "  <url>\n    <loc>" + xml_escape(url) + "</loc>\n"
+	clean_lastmod := trim(to_string(lastmod_iso))
+	if len(clean_lastmod) == 10 {
+		entry = entry + "    <lastmod>" + xml_escape(clean_lastmod) + "</lastmod>\n"
+	}
+	entry = entry + "    <changefreq>" + changefreq + "</changefreq>\n    <priority>" + priority + "</priority>\n  </url>\n"
+	return entry
+}
+
+func encode_post_record_field(value) {
+	encoded := to_string(value)
+	encoded = replace(encoded, "%", "%25")
+	encoded = replace(encoded, "\t", "%09")
+	encoded = replace(encoded, "\n", "%0A")
+	encoded = replace(encoded, "\r", "%0D")
+	encoded = replace(encoded, ",", "%2C")
+	return encoded
+}
+
+func decode_post_record_field(value) {
+	decoded := to_string(value)
+	decoded = replace(decoded, "%09", "\t")
+	decoded = replace(decoded, "%0A", "\n")
+	decoded = replace(decoded, "%0D", "\r")
+	decoded = replace(decoded, "%2C", ",")
+	decoded = replace(decoded, "%25", "%")
+	return decoded
+}
+
+func encode_post_record_tags(tags) {
+	encoded := []
+	i := 0
+	loop {
+		if i >= len(tags) {
+			break
+		}
+		encoded = push(encoded, encode_post_record_field(tags[i]))
+		i := i + 1
+	}
+	return join(encoded, ",")
+}
+
+# Parse an escaped tab-delimited post index record back into a dict.
+func parse_post_record(line) {
+	f := split(line, "\t")
+	record := {"route": "", "title": "", "excerpt": "", "featured_image": "", "tags": [], "date_rfc822": "", "date_iso": ""}
+	if len(f) > 1 {
+		record["route"] = decode_post_record_field(f[1])
+	}
+	if len(f) > 2 {
+		record["title"] = decode_post_record_field(f[2])
+	}
+	if len(f) > 3 {
+		record["excerpt"] = decode_post_record_field(f[3])
+	}
+	if len(f) > 4 {
+		record["featured_image"] = decode_post_record_field(f[4])
+	}
+	if len(f) > 5 && len(f[5]) > 0 {
+		encoded_tags := split(f[5], ",")
+		tags := []
+		i := 0
+		loop {
+			if i >= len(encoded_tags) {
+				break
+			}
+			tags = push(tags, decode_post_record_field(encoded_tags[i]))
+			i := i + 1
+		}
+		record["tags"] = tags
+	}
+	if len(f) > 6 {
+		record["date_rfc822"] = decode_post_record_field(f[6])
+	}
+	if len(f) > 7 {
+		record["date_iso"] = decode_post_record_field(f[7])
+	}
+	return record
+}
+
+func create_sample_config(format_name) {
+	fmt := to_lower(trim(format_name))
+	if fmt != "yaml" && fmt != "json" && fmt != "yml" {
+		fmt := "yml"
+	}
+	sample := {
+		"site_url": "https://example.com",
+		"site_title": "Kujo SSG Starter Site",
+		"site_tagline": "A complete starter that shows pages, posts, custom types, and taxonomy workflows.",
+		"output": "output",
+		"content": "content",
+		"templates": "templates",
+		"assets": "assets",
+		"blog_slug": "blog",
+		"posts_at_root": false,
+		"posts_per_page": 2,
+		"sort_by": "date",
+		"fonts": ["Bree Serif", "Inter"],
+		"robots": "public",
+		"llms": "public",
+		"minify": false,
+		"download_remote_images": false,
+		"allow_private_remote_images": false,
+		"webmcp": true,
+		"watch": false
+	}
+
+	if fmt == "json" {
+		write_file("kujo-ssg.json", to_json(sample))
+		return "kujo-ssg.json"
+	}
+
+	yaml_file := "kujo-ssg." + fmt
+	write_file(yaml_file, to_yaml(sample))
+	return yaml_file
+}
+
+func init_project(format_name) {
+	ensure_dirs([
+		"templates",
+		"content/posts",
+		"content/pages",
+		"content/storefronts",
+		"content/tshirts",
+		"content/pants",
+		"content/shorts",
+		"assets/css",
+		"assets/fonts",
+		"assets/js",
+		"assets/images"
+	])
+
+	write_seed_files([
+		{"path": "templates/layout.html", "content": "<!DOCTYPE html>\n<html lang=\"{{lang}}\">\n<head>\n\t<meta charset=\"UTF-8\">\n\t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n\t<title>{{page_title}}</title>\n\t<meta name=\"description\" content=\"{{meta_description}}\">\n\t<meta name=\"keywords\" content=\"{{seo_keywords}}\">\n\t<meta name=\"author\" content=\"{{author_meta}}\">\n\t{{canonical_tag}}\n\t<meta property=\"og:title\" content=\"{{seo_title}}\">\n\t<meta property=\"og:description\" content=\"{{seo_description}}\">\n\t<meta property=\"og:url\" content=\"{{og_url}}\">\n\t<meta property=\"og:type\" content=\"website\">\n\t{{og_image_tag}}\n\t<meta name=\"twitter:card\" content=\"summary_large_image\">\n\t<meta name=\"twitter:title\" content=\"{{seo_title}}\">\n\t<meta name=\"twitter:description\" content=\"{{seo_description}}\">\n\t{{twitter_image_tag}}\n\t<link rel=\"stylesheet\" href=\"{{relative_path}}assets/css/fonts.css\">\n\t<link rel=\"stylesheet\" href=\"{{stylesheet_path}}\">\n</head>\n<body>\n\t<header class=\"site-header\">\n\t\t<h1><a href=\"{{home_path}}\">{{site_name}}</a></h1>\n\t\t<nav>{{navigation}}</nav>\n\t</header>\n\t<main>{{content}}</main>\n\t<footer><p>{{site_tagline}}</p></footer>\n</body>\n</html>\n"},
+		{"path": "templates/page-home.html", "content": "<main class=\"hero-shell\">\n\t<section class=\"hero\">\n\t\t<p class=\"eyebrow\">Starter Site</p>\n\t\t<h1>{{title}}</h1>\n\t\t<p>{{description}}</p>\n\t</section>\n\t<section class=\"section-shell\">\n\t\t<h2>Latest Posts</h2>\n\t\t{{posts_html}}\n\t\t{{pagination}}\n\t</section>\n</main>\n"},
+		{"path": "templates/page-blog.html", "content": "<main class=\"section-shell\">\n\t<h1>Blog</h1>\n\t<p>{{description}}</p>\n\t{{posts_html}}\n\t{{pagination}}\n</main>\n"},
+		{"path": "templates/page-storefronts.html", "content": "<main class=\"section-shell\">\n\t<h1>{{title}}</h1>\n\t<p>A custom content-type listing that uses its own template file.</p>\n\t<ul class=\"card-grid\">{{cards}}</ul>\n</main>\n"},
+		{"path": "templates/storefronts.html", "content": "<article class=\"post-shell\">\n\t<p class=\"eyebrow\">Storefront Profile</p>\n\t<h1>{{title}}</h1>\n\t{{featured_image_html}}\n\t<p class=\"meta-row\">Opened: {{date}} - Manager: {{author}}</p>\n\t<div class=\"category-row\">{{categories_html}}</div>\n\t<div class=\"tag-row\">{{tags_html}}</div>\n\t{{taxonomies_html}}\n\t<section class=\"prose\">{{body}}</section>\n</article>\n"},
+		{"path": "templates/post-spotlight.html", "content": "<article class=\"post-shell\">\n\t<p class=\"eyebrow\">Spotlight Post</p>\n\t<h1>{{title}}</h1>\n\t{{featured_image_html}}\n\t<p class=\"meta-row\">{{date}} - {{author}}</p>\n\t<div class=\"category-row\">{{categories_html}}</div>\n\t<div class=\"tag-row\">{{tags_html}}</div>\n\t{{taxonomies_html}}\n\t<section class=\"prose\">{{body}}</section>\n</article>\n"},
+		{"path": "templates/post.html", "content": "<article class=\"post-shell\">\n\t<p class=\"eyebrow\">{{date}} {{author}}</p>\n\t<h1>{{title}}</h1>\n\t{{featured_image_html}}\n\t<div class=\"category-row\">{{categories_html}}</div>\n\t<div class=\"tag-row\">{{tags_html}}</div>\n\t{{taxonomies_html}}\n\t<section class=\"prose\">{{body}}</section>\n</article>\n"},
+		{"path": "templates/page.html", "content": "<article class=\"page-shell\">\n\t<h1>{{title}}</h1>\n\t{{featured_image_html}}\n\t<div class=\"category-row\">{{categories_html}}</div>\n\t<div class=\"tag-row\">{{tags_html}}</div>\n\t{{taxonomies_html}}\n\t<section class=\"prose\">{{body}}</section>\n</article>\n"},
+		{"path": "templates/404.html", "content": "<main class=\"container max-w-2xl m-auto py-10 px-4\" id=\"main-content\"><article class=\"page-shell\"><h1>Page Not Found</h1><p>The page you requested could not be found.</p></article></main>\n"},
+		{"path": "assets/css/style.css", "content": ":root { --bg: #f7f4ee; --ink: #1e1e1e; --line: #ddd2c5; --accent: #2e8b57; --chip: #eef7f2; }\n* { box-sizing: border-box; }\nbody { margin: 0; background: var(--bg); color: var(--ink); font-family: Georgia, serif; line-height: 1.7; }\n.site-header, main, footer { max-width: 960px; margin: 0 auto; padding: 1rem 1.25rem; }\n.site-header { border-bottom: 2px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 1rem; }\n.site-header h1 { margin: 0; font-size: 1.4rem; }\n.site-header nav a { margin-right: 0.9rem; text-decoration: none; color: var(--ink); }\n.hero, .post-shell, .page-shell, .section-shell { background: #fff; border: 2px solid var(--line); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1rem; }\n.hero h1 { margin-top: 0; margin-bottom: 0.6rem; }\n.eyebrow { text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em; color: #6b5f55; margin-bottom: 0.5rem; }\n.card-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.9rem; }\n.card-grid li, .kujo-content li { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 0.8rem; }\n.card-grid h2, .kujo-content h2 { margin: 0 0 0.35rem 0; font-size: 1.15rem; }\n.tag { display: inline-block; padding: 0.2rem 0.45rem; border: 1px solid #b7d9d5; background: var(--chip); border-radius: 999px; margin-right: 0.35rem; margin-bottom: 0.3rem; font-size: 0.8rem; }\n.meta-row { color: #5f554c; font-size: 0.92rem; }\n.taxonomy-group { margin: 0.4rem 0 0.7rem 0; }\n.taxonomy-label { font-weight: 700; margin-right: 0.35rem; }\n.pagination { margin-top: 1rem; }\n.pagination a, .pagination strong { margin-right: 0.45rem; }\n"},
+		{"path": "content/posts/welcome-to-kujo-ssg.md", "content": "---\ntitle: Welcome to Kujo SSG\ncustom_url: welcome-to-kujo-ssg\nauthor: 1\ndate: 2026-05-07\ncategories: [1]\ntags: [1, 2]\ndescription: A quick orientation to the starter site and workflow.\nkeywords: Kujo SSG, static site generator, onboarding\nseo_title: Welcome to Kujo SSG\n---\n\n# Welcome\n\nThis starter project gives you an immediate, visual baseline.\n\n## What You Get\n\n- Ready-to-edit pages and posts.\n- Custom content types with listing pages.\n- Shared and type-specific taxonomy lookups.\n"},
+		{"path": "content/posts/designing-a-taxonomy-strategy.md", "content": "---\ntitle: Designing a Taxonomy Strategy\nauthor: 2\ndate: 2026-05-08\ntemplate: spotlight\ncategories: [2]\ntags: [2, 3]\ndescription: Practical guidance for balancing global and content-type-specific taxonomy models.\nkeywords: taxonomy, metadata, content architecture\nseo_title: Designing a Taxonomy Strategy\n---\n\n# Taxonomy First\n\nUse global taxonomies when terms are shared between content types.\n\nUse type-specific lookups only for domain-specific naming.\n"},
+		{"path": "content/posts/shipping-a-starter-site-that-just-works.md", "content": "---\ntitle: Shipping a Starter Site That Just Works\nauthor: 3\ndate: 2026-05-09\ncategories: [1, 4]\ntags: [4]\ndescription: Checklist for first-run confidence when onboarding new developers.\nkeywords: starter site, onboarding, developer experience\nseo_title: Shipping a Starter Site That Just Works\n---\n\n# Starter Site Checklist\n\nA first build should feel complete, not empty.\n\n- Include sample pages, posts, and custom collections.\n- Include templates that demonstrate override points.\n- Include taxonomy lookups with realistic examples.\n"},
+		{"path": "content/pages/about.md", "content": "---\ntitle: About\ncustom_url: about\ndescription: Learn how this Kujo SSG starter is organized.\nkeywords: about, starter, Kujo SSG\nseo_title: About the Kujo SSG Starter\n---\n\n# About This Starter\n\nThis project is intentionally structured as a practical onboarding baseline.\n\n## Included\n\n- Blog posts.\n- Standalone pages.\n- Custom content collections.\n- Shared and scoped taxonomy examples.\n"},
+		{"path": "content/pages/contact.md", "content": "---\ntitle: Contact\ncustom_url: contact\ndescription: Example contact page for the starter site.\nkeywords: contact, support\nseo_title: Contact\n---\n\n# Contact\n\nUse this page for support links, email aliases, and team routing notes.\n"},
+		{"path": "content/pages/getting-started.md", "content": "---\ntitle: Getting Started\ncustom_url: getting-started\ndescription: Quick setup path for Kujo SSG newcomers.\nkeywords: getting started, setup, onboarding\nseo_title: Kujo SSG Getting Started\n---\n\n# Getting Started\n\n1. Edit content under the content folder.\n2. Adjust templates under templates.\n3. Build and inspect output.\n"},
+		{"path": "content/storefronts/north-austin.md", "content": "---\ntitle: North Austin Flagship\nauthor: 2\ndate: 2026-04-19\ncategories: [3]\ntags: [5, 6]\nlocation: [1]\ntaxonomies:\n  district: north\n  color: [1, 2]\ndescription: Flagship storefront profile with location and district taxonomies.\n---\n\n# Storefront Snapshot\n\nThis location focuses on premium basics and same-day pickup.\n"},
+		{"path": "content/storefronts/riverwalk-denver.md", "content": "---\ntitle: Riverwalk Denver\nauthor: 1\ndate: 2026-04-27\ncategories: [3]\ntags: [5]\nlocation: [2]\ntaxonomies:\n  district: riverwalk\n  color: [3]\ndescription: Regional storefront profile demonstrating taxonomy reuse.\n---\n\n# Storefront Snapshot\n\nThis location pilots new merchandising layouts each month.\n"},
+		{"path": "content/tshirts/heavyweight-tee.md", "content": "---\ntitle: Heavyweight Tee\nauthor: 1\ndate: 2026-04-12\ncategories: [3]\ntags: [6]\ncolor: [1, 2]\ndescription: A sample catalog item using a shared color taxonomy.\n---\n\n# Product Notes\n\nStructured metadata here can drive static catalogs and filters.\n"},
+		{"path": "content/pants/cargo-pant.md", "content": "---\ntitle: Utility Cargo Pant\nauthor: 2\ndate: 2026-04-16\ncategories: [3]\ntags: [6]\ncolor: [2, 3]\ndescription: Another content type reusing the same global color taxonomy.\n---\n\n# Product Notes\n\nCatalog entries can share taxonomies across independent content folders.\n"},
+		{"path": "content/shorts/training-short.md", "content": "---\ntitle: Training Short\nauthor: 3\ndate: 2026-04-21\ncategories: [3]\ntags: [6]\ntaxonomies:\n  color: [1, 4]\ndescription: Example showing map-style taxonomy input for shared terms.\n---\n\n# Product Notes\n\nUse map form when you prefer grouping taxonomies in one frontmatter key.\n"},
+		{"path": "content/authors.yml", "content": "1:\n  name: Ava Nguyen\n2:\n  name: Marcus Lee\n3:\n  name: Ops Team\n"},
+		{"path": "content/categories.yml", "content": "1:\n  name: Engineering\n2:\n  name: Product\n3:\n  name: Retail\n4:\n  name: Field Notes\n"},
+		{"path": "content/tags.yml", "content": "1:\n  name: Getting Started\n2:\n  name: Taxonomy\n3:\n  name: Architecture\n4:\n  name: Workflow\n5:\n  name: Storefront\n6:\n  name: Inventory\n"},
+		{"path": "content/color.yml", "content": "1:\n  name: Black\n2:\n  name: Navy\n3:\n  name: Olive\n4:\n  name: Sand\n"},
+		{"path": "content/storefronts-location.yml", "content": "1:\n  name: Austin\n2:\n  name: Denver\n3:\n  name: Portland\n"}
+	])
+
+	config_path := create_sample_config(format_name)
+	print("Created sample configuration file: " + config_path)
+	print("Starter structure is ready.")
+}
+
+func load_config(settings) {
+	result := {
+		"settings": settings,
+		"loaded_path": "",
+		"errors": []
+	}
+
+	config_path := ""
+	if path_exists("kujo-ssg.yml") {
+		config_path := "kujo-ssg.yml"
+	} else if path_exists("kujo-ssg.yaml") {
+		config_path := "kujo-ssg.yaml"
+	} else if path_exists("kujo-ssg.json") {
+		config_path := "kujo-ssg.json"
+	}
+
+	if len(config_path) == 0 {
+		return result
+	}
+
+	try {
+		raw := read_file(config_path)
+		parsed := {}
+		if ends_with(config_path, ".json") {
+			parsed := parse_json(raw)
+		} else {
+			parsed := parse_yaml(raw)
+		}
+		if is_dict(parsed) {
+			parsed_keys := keys(parsed)
+			parsed_key_idx := 0
+			loop {
+				if parsed_key_idx >= len(parsed_keys) {
+					break
+				}
+
+				key := parsed_keys[parsed_key_idx]
+				parsed_key_idx := parsed_key_idx + 1
+				settings[key] = parsed[key]
+			}
+		} else {
+			result["errors"] = push(result["errors"], "Could not parse " + config_path + ": expected a top-level object")
+		}
+		result["loaded_path"] = config_path
+	} except err {
+		result["errors"] = push(result["errors"], "Could not parse " + config_path + ": " + safe_error_text(err))
+	}
+
+	result["settings"] = settings
+	return result
+}
+
+func apply_cli_overrides(settings, cli_args) {
+	result := {
+		"settings": settings,
+		"show_help": false,
+		"show_version": false,
+		"inspect_config": false,
+		"init_format": "",
+		"errors": []
+	}
+
+	i := 0
+	loop {
+		if i >= len(cli_args) {
+			break
+		}
+
+		token := cli_args[i]
+
+		if token == "--help" || token == "-h" {
+			result["show_help"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--inspect-config" {
+			result["inspect_config"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--version" {
+			result["show_version"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--watch" {
+			settings["watch"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--minify" {
+			settings["minify"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--download-remote-images" {
+			settings["download_remote_images"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--allow-private-remote-images" {
+			settings["allow_private_remote_images"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--drafts" {
+			settings["drafts"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--webmcp" {
+			settings["webmcp"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--no-webmcp" {
+			settings["webmcp"] = false
+			i := i + 1
+			continue
+		}
+		if token == "--posts-at-root" {
+			settings["posts_at_root"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--no-index" {
+			settings["no_index"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--no-aux" {
+			settings["no_aux"] = true
+			i := i + 1
+			continue
+		}
+		if token == "--no-aliases" {
+			settings["no_aliases"] = true
+			i := i + 1
+			continue
+		}
+
+		value_flags := [
+			{"flag": "--output", "key": "output"},
+			{"flag": "--content", "key": "content"},
+			{"flag": "--templates", "key": "templates"},
+			{"flag": "--assets", "key": "assets"},
+			{"flag": "--posts-per-page", "key": "posts_per_page"},
+			{"flag": "--sort-by", "key": "sort_by"},
+			{"flag": "--fonts", "key": "fonts"},
+			{"flag": "--site-title", "key": "site_title"},
+			{"flag": "--site-tagline", "key": "site_tagline"},
+			{"flag": "--site-url", "key": "site_url"},
+			{"flag": "--robots", "key": "robots"},
+			{"flag": "--llms", "key": "llms"},
+			{"flag": "--blog-slug", "key": "blog_slug"},
+			{"flag": "--phase", "key": "phase"},
+			{"flag": "--shard", "key": "shard"},
+			{"flag": "--shards", "key": "shards"},
+			{"flag": "--init", "key": "init"}
+		]
+
+		matched := false
+		value_flag_idx := 0
+		loop {
+			if value_flag_idx >= len(value_flags) {
+				break
+			}
+
+			spec := value_flags[value_flag_idx]
+			value_flag_idx := value_flag_idx + 1
+			flag := spec["flag"]
+			key := spec["key"]
+			value := ""
+
+			if token == flag {
+				matched := true
+				if i + 1 < len(cli_args) {
+					value := cli_args[i + 1]
+					i := i + 1
+				} else {
+					result["errors"] = push(result["errors"], "Missing value for " + flag)
+				}
+			} else {
+				inline := option_inline_value(token, flag)
+				if inline != null {
+					value := inline
+					matched := true
+				}
+			}
+
+			if matched {
+				value := trim(to_string(value))
+				if len(value) == 0 {
+					result["errors"] = push(result["errors"], "Missing value for " + flag)
+					break
+				}
+
+				if key == "init" {
+					init_format := to_lower(value)
+					if !string_in_list(init_format, ["yml", "yaml", "json"]) {
+						result["errors"] = push(result["errors"], "Invalid value for --init: " + value + " (expected yml, yaml, or json)")
+					} else {
+						result["init_format"] = init_format
+					}
+				} else if key == "fonts" {
+					settings["fonts"] = to_string_array(value)
+				} else {
+					settings[key] = value
+				}
+				break
+			}
+		}
+
+		if !matched {
+			if starts_with(token, "-") {
+				result["errors"] = push(result["errors"], "Unknown option: " + token)
+			} else {
+				result["errors"] = push(result["errors"], "Unexpected argument: " + token)
+			}
+		}
+
+		i := i + 1
+	}
+
+	result["settings"] = settings
+	return result
+}
+
+func normalize_settings(settings) {
+	result := {
+		"settings": settings,
+		"errors": []
+	}
+
+	settings["output"] = trim(to_string(settings["output"]))
+	settings["content"] = trim(to_string(settings["content"]))
+	settings["templates"] = trim(to_string(settings["templates"]))
+	settings["assets"] = trim(to_string(settings["assets"]))
+	settings["site_title"] = trim(to_string(settings["site_title"]))
+	settings["site_tagline"] = trim(to_string(settings["site_tagline"]))
+	settings["site_url"] = trim(to_string(settings["site_url"]))
+	loop {
+		if !ends_with(settings["site_url"], "/") || ends_with(settings["site_url"], "://") {
+			break
+		}
+		settings["site_url"] = substring(settings["site_url"], 0, len(settings["site_url"]) - 1)
+	}
+	raw_blog_slug := trim(to_string(settings["blog_slug"]))
+	if len(raw_blog_slug) == 0 {
+		settings["blog_slug"] = ""
+	} else {
+		settings["blog_slug"] = clean_slug(raw_blog_slug)
+	}
+
+	raw_posts_per_page := settings["posts_per_page"]
+	settings["posts_per_page"] = parse_int_value(raw_posts_per_page, 5)
+	if !is_integer_text(raw_posts_per_page) || settings["posts_per_page"] <= 0 {
+		result["errors"] = push(result["errors"], "Invalid value for posts_per_page: " + to_string(raw_posts_per_page) + " (expected positive integer)")
+	}
+	if settings["posts_per_page"] <= 0 {
+		settings["posts_per_page"] = 5
+	}
+
+	sort_by := to_lower(trim(to_string(settings["sort_by"])))
+	if len(sort_by) > 0 && !string_in_list(sort_by, ["date", "title", "author", "order"]) {
+		result["errors"] = push(result["errors"], "Invalid value for sort_by: " + to_string(settings["sort_by"]) + " (expected date, title, author, or order)")
+	}
+	if !string_in_list(sort_by, ["date", "title", "author", "order"]) {
+		sort_by := "date"
+	}
+	settings["sort_by"] = sort_by
+
+	bool_specs := [
+		{"key": "watch", "fallback": false},
+		{"key": "minify", "fallback": false},
+		{"key": "download_remote_images", "fallback": false},
+		{"key": "allow_private_remote_images", "fallback": false},
+		{"key": "drafts", "fallback": false},
+		{"key": "webmcp", "fallback": true},
+		{"key": "posts_at_root", "fallback": false},
+		{"key": "no_index", "fallback": false},
+		{"key": "no_aux", "fallback": false},
+		{"key": "no_aliases", "fallback": false}
+	]
+	bool_index := 0
+	loop {
+		if bool_index >= len(bool_specs) {
+			break
+		}
+
+		spec := bool_specs[bool_index]
+		key := spec["key"]
+		fallback := spec["fallback"]
+		raw_value := settings[key]
+		if !is_valid_bool_input(raw_value) {
+			result["errors"] = push(result["errors"], "Invalid boolean value for " + key + ": " + to_string(raw_value))
+		}
+		settings[key] = parse_bool_value(raw_value, fallback)
+
+		bool_index := bool_index + 1
+	}
+
+	fonts := settings["fonts"]
+	settings["fonts"] = to_string_array(fonts)
+	font_index := 0
+	loop {
+		if font_index >= len(settings["fonts"]) {
+			break
+		}
+		font_family := settings["fonts"][font_index]
+		font_index := font_index + 1
+		if !is_safe_font_family(font_family) {
+			result["errors"] = push(result["errors"], "Invalid font family: " + to_string(font_family) + " (expected 1-80 ASCII letters, digits, spaces, dots, underscores, or hyphens)")
+		}
+	}
+
+	robots := to_lower(trim(to_string(settings["robots"])))
+	if len(robots) > 0 && !string_in_list(robots, ["public", "private"]) {
+		result["errors"] = push(result["errors"], "Invalid value for robots: " + to_string(settings["robots"]) + " (expected public or private)")
+	}
+	if !string_in_list(robots, ["public", "private"]) {
+		robots := "public"
+	}
+	settings["robots"] = robots
+
+	llms := to_lower(trim(to_string(settings["llms"])))
+	if len(llms) > 0 && !string_in_list(llms, ["public", "private"]) {
+		result["errors"] = push(result["errors"], "Invalid value for llms: " + to_string(settings["llms"]) + " (expected public or private)")
+	}
+	if !string_in_list(llms, ["public", "private"]) {
+		llms := "public"
+	}
+	settings["llms"] = llms
+
+	if len(settings["output"]) == 0 {
+		settings["output"] = "output"
+	}
+	if len(settings["content"]) == 0 {
+		settings["content"] = "content"
+	}
+	if len(settings["templates"]) == 0 {
+		settings["templates"] = "templates"
+	}
+	if len(settings["assets"]) == 0 {
+		settings["assets"] = "assets"
+	}
+
+	# Phased/sharded build controls (used by the parallel orchestrator). The
+	# default "full" phase reproduces the standard single-process build exactly.
+	phase := to_lower(trim(to_string(settings["phase"])))
+	if len(phase) == 0 {
+		phase := "full"
+	}
+	if !string_in_list(phase, ["full", "setup", "posts", "finalize"]) {
+		result["errors"] = push(result["errors"], "Invalid value for phase: " + to_string(settings["phase"]) + " (expected full, setup, posts, or finalize)")
+		phase := "full"
+	}
+	settings["phase"] = phase
+	raw_shards := settings["shards"]
+	settings["shards"] = parse_int_value(raw_shards, 1)
+	if !is_integer_text(raw_shards) || settings["shards"] < 1 {
+		result["errors"] = push(result["errors"], "Invalid value for shards: " + to_string(raw_shards) + " (expected positive integer)")
+		settings["shards"] = 1
+	}
+	if settings["shards"] > 256 {
+		result["errors"] = push(result["errors"], "Invalid value for shards: " + to_string(raw_shards) + " (must not exceed 256)")
+	}
+	raw_shard := settings["shard"]
+	settings["shard"] = parse_int_value(raw_shard, 0)
+	if !is_integer_text(raw_shard) || settings["shard"] < 0 {
+		result["errors"] = push(result["errors"], "Invalid value for shard: " + to_string(raw_shard) + " (expected non-negative integer)")
+		settings["shard"] = 0
+	}
+	if settings["shard"] >= settings["shards"] {
+		result["errors"] = push(result["errors"], "Invalid shard index: " + to_string(settings["shard"]) + " (must be less than shards=" + to_string(settings["shards"]) + ")")
+	}
+
+	# The setup phase recursively deletes an existing output tree. Refuse every
+	# overlap with source trees, including the working directory and filesystem
+	# root, before any destructive build work begins.
+	try {
+		output_abs := absolute_config_path(settings["output"])
+		cwd_abs := path_absolute(os_getcwd())
+		if path_exists(settings["output"]) && path_is_symlink(settings["output"]) {
+			result["errors"] = push(result["errors"], "Unsafe output directory: " + settings["output"] + " is a symbolic link")
+		}
+		if output_abs == cwd_abs || dirname(output_abs) == output_abs {
+				result["errors"] = push(result["errors"], "Unsafe output directory: " + settings["output"] + " (refusing to delete the working directory or filesystem root)")
+			}
+
+			source_paths := [settings["content"], settings["templates"], settings["assets"]]
+			source_idx := 0
+			loop {
+				if source_idx >= len(source_paths) {
+					break
+				}
+				source_path := source_paths[source_idx]
+				source_idx := source_idx + 1
+				source_abs := absolute_config_path(source_path)
+				output_prefix := output_abs
+				if !ends_with(output_prefix, "/") {
+					output_prefix = output_prefix + "/"
+				}
+				source_prefix := source_abs
+				if !ends_with(source_prefix, "/") {
+					source_prefix = source_prefix + "/"
+				}
+				if output_abs == source_abs || starts_with(source_abs, output_prefix) || starts_with(output_abs, source_prefix) {
+					result["errors"] = push(result["errors"], "Unsafe output directory: " + settings["output"] + " overlaps source directory " + source_path)
+				}
+			}
+	} except err {
+			result["errors"] = push(result["errors"], "Could not validate output directory " + settings["output"] + ": " + safe_error_text(err))
+	}
+
+	result["settings"] = settings
+	return result
+}
+
+func copy_assets(settings) {
+	output_assets := path_join(settings["output"], "assets")
+	ensure_dir(output_assets)
+
+	assets_dir := settings["assets"]
+	used_config_assets := false
+	if path_exists(assets_dir) && path_is_dir(assets_dir) {
+		copy_tree(assets_dir, output_assets)
+		used_config_assets := true
+	} else if path_exists("static") && path_is_dir("static") {
+		copy_tree("static", output_assets)
+	}
+
+	static_style := path_join("static", "style.css")
+	if !used_config_assets && path_exists(static_style) {
+		out_css_dir := path_join(output_assets, "css")
+		ensure_dir(out_css_dir)
+		copy_file(static_style, path_join(out_css_dir, "style.css"))
+	}
+}
+
+func build_site(settings) {
+	build_start := performance_now()
+	output_dir := settings["output"]
+	content_root := settings["content"]
+	templates_dir := settings["templates"]
+	site_url := trim(settings["site_url"])
+	if ends_with(site_url, "/") {
+		site_url := substring(site_url, 0, len(site_url) - 1)
+	}
+
+	# Phase controls. "full" (default) is the standard single-process build.
+	# "setup"/"posts"/"finalize" split the work so an orchestrator can render
+	# post shards across processes (see scripts/build-parallel.sh).
+	phase := settings["phase"]
+	shard := settings["shard"]
+	shards := settings["shards"]
+	do_setup := phase == "full" || phase == "setup"
+	do_posts := phase == "full" || phase == "posts"
+	do_finalize := phase == "full" || phase == "finalize"
+
+	minifier := []
+	if settings["minify"] && (do_setup || do_finalize) {
+		minifier = resolve_minifier()
+	}
+
+	if do_setup {
+		if path_exists(output_dir) {
+			delete_tree(output_dir)
+		}
+		ensure_dir(output_dir)
+
+		copy_assets(settings)
+		if settings["webmcp"] {
+			webmcp_assets_dir := path_join(output_dir, "assets/js")
+			ensure_dir(webmcp_assets_dir)
+			write_file(path_join(webmcp_assets_dir, "kujo-webmcp.js"), webmcp_runtime_source())
+		}
+		generate_fonts_css(settings)
+
+		# Generate a lightweight SVG favicon from the site initial.
+		favicon_initial := "K"
+		favicon_title := trim(to_string(settings["site_title"]))
+		if len(favicon_title) > 0 {
+			favicon_initial = to_upper(substring(favicon_title, 0, 1))
+		}
+		favicon_svg := "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"><rect width=\"64\" height=\"64\" rx=\"12\" fill=\"#0f172a\"/><text x=\"32\" y=\"43\" font-family=\"system-ui, sans-serif\" font-size=\"36\" font-weight=\"700\" fill=\"#ffffff\" text-anchor=\"middle\">" + xml_escape(favicon_initial) + "</text></svg>\n"
+		write_file(path_join(output_dir, "favicon.svg"), favicon_svg)
+
+		# Write a post-file manifest once. Sharded workers read this instead of
+		# re-listing the (potentially huge) posts directory, which avoids both
+		# redundant work and filesystem contention when many workers list the
+		# same large directory concurrently.
+		if phase == "setup" {
+			setup_post_files := markdown_files(path_join(content_root, "posts"))
+			write_file(path_join(output_dir, ".kujo-post-manifest.txt"), join(setup_post_files, "\n") + "\n")
+		}
+	}
+
+	if phase == "setup" {
+		print_lines(["Setup phase complete", "  Output directory: " + output_dir])
+		return null
+	}
+
+	ensure_dir(output_dir)
+
+	layout_fallback := "<!DOCTYPE html><html lang=\"{{lang}}\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>{{page_title}}</title><meta name=\"description\" content=\"{{meta_description}}\"><meta name=\"keywords\" content=\"{{seo_keywords}}\"><meta name=\"author\" content=\"{{author_meta}}\">{{canonical_tag}}<meta property=\"og:title\" content=\"{{seo_title}}\"><meta property=\"og:description\" content=\"{{seo_description}}\"><meta property=\"og:url\" content=\"{{og_url}}\"><meta property=\"og:type\" content=\"website\">{{og_image_tag}}<meta name=\"twitter:card\" content=\"summary_large_image\"><meta name=\"twitter:title\" content=\"{{seo_title}}\"><meta name=\"twitter:description\" content=\"{{seo_description}}\">{{twitter_image_tag}}<link rel=\"stylesheet\" href=\"{{stylesheet_path}}\"></head><body><a class=\"skip-link\" href=\"#main-content\">Skip to main content</a><header><h1><a href=\"{{home_path}}\">{{site_name}}</a></h1><nav aria-label=\"Primary navigation\"><ul>{{navigation}}</ul></nav></header><main id=\"main-content\">{{content}}</main><footer><p>{{site_tagline}}</p></footer></body></html>"
+	post_fallback := "<article><h1>{{title}}</h1>{{featured_image_html}}<p>{{date}} {{author}}</p><div>{{categories_html}}</div><div>{{tags_html}}</div>{{taxonomies_html}}<section>{{body}}</section></article>"
+	page_fallback := "<article><h1>{{title}}</h1>{{featured_image_html}}<div>{{categories_html}}</div><div>{{tags_html}}</div>{{taxonomies_html}}<section>{{body}}</section></article>"
+	not_found_fallback := "<main id=\"main-content\"><article><h1>Page Not Found</h1><p>The page you requested could not be found.</p></article></main>"
+
+	layout_template := layout_fallback
+	post_template := post_fallback
+	page_template := page_fallback
+	not_found_template := not_found_fallback
+
+	layout_path := path_join(templates_dir, "layout.html")
+	post_path := path_join(templates_dir, "post.html")
+	page_path := path_join(templates_dir, "page.html")
+	not_found_path := path_join(templates_dir, "404.html")
+
+	if path_exists(layout_path) { layout_template = read_file(layout_path) }
+	if path_exists(post_path) { post_template = read_file(post_path) }
+	if path_exists(page_path) { page_template = read_file(page_path) }
+	if path_exists(not_found_path) { not_found_template = read_file(not_found_path) }
+
+	home_listing_template := ""
+	home_listing_path := path_join(templates_dir, "page-home.html")
+	if path_exists(home_listing_path) {
+		home_listing_template = read_file(home_listing_path)
+	}
+
+	blog_listing_template := ""
+	if len(settings["blog_slug"]) > 0 {
+		blog_slug_listing_path := path_join(templates_dir, "page-" + settings["blog_slug"] + ".html")
+		if path_exists(blog_slug_listing_path) {
+			blog_listing_template = read_file(blog_slug_listing_path)
+		}
+	}
+	if len(blog_listing_template) == 0 {
+		blog_listing_path := path_join(templates_dir, "page-blog.html")
+		if path_exists(blog_listing_path) {
+			blog_listing_template = read_file(blog_listing_path)
+		}
+	}
+
+	authors_lookup := load_lookup(path_join(content_root, "authors.yml"))
+	categories_lookup := load_lookup(path_join(content_root, "categories.yml"))
+	tags_lookup := load_lookup(path_join(content_root, "tags.yml"))
+	color_lookup := load_lookup(path_join(content_root, "color.yml"))
+	locations_lookup := load_lookup(path_join(content_root, "storefronts-location.yml"))
+	taxonomy_lookups := load_taxonomy_lookups(content_root)
+	reserved_taxonomy_slots := ["categories", "tags", "color", "location"]
+	# Custom-taxonomy rendering is only possible if there is a non-core taxonomy
+	# lookup, or a given item declares `taxonomies:`. Precompute the cheap half so
+	# the per-item hot path can skip the expensive discovery work entirely.
+	has_custom_tax_lookups := false
+	tax_lookup_keys := keys(taxonomy_lookups)
+	tax_lookup_key_idx := 0
+	loop {
+		if tax_lookup_key_idx >= len(tax_lookup_keys) {
+			break
+		}
+		tax_lk := tax_lookup_keys[tax_lookup_key_idx]
+		tax_lookup_key_idx := tax_lookup_key_idx + 1
+		if tax_lk != "global:categories" && tax_lk != "global:tags" {
+			has_custom_tax_lookups = true
+			break
+		}
+	}
+
+	page_files := markdown_files(path_join(content_root, "pages"))
+	# In sharded phases, read the manifest written by setup to avoid every worker
+	# re-listing a huge posts directory at once (robustness + less redundant work).
+	post_files := []
+	if phase == "full" {
+		post_files = markdown_files(path_join(content_root, "posts"))
+	} else {
+		post_manifest := path_join(output_dir, ".kujo-post-manifest.txt")
+		if path_exists(post_manifest) {
+			manifest_text := trim(read_file(post_manifest))
+			if len(manifest_text) > 0 {
+				post_files = split(manifest_text, "\n")
+			}
+		} else {
+			post_files = markdown_files(path_join(content_root, "posts"))
+		}
+	}
+	custom_collections := []
+	if path_exists(content_root) && path_is_dir(content_root) {
+		content_entries := sort(list_dir(content_root))
+		content_entry_idx := 0
+		loop {
+			if content_entry_idx >= len(content_entries) {
+				break
+			}
+
+			entry := content_entries[content_entry_idx]
+			content_entry_idx := content_entry_idx + 1
+			collection_path := path_join(content_root, entry)
+			if !path_is_dir(collection_path) {
+				continue
+			}
+			if entry == "pages" || entry == "posts" {
+				continue
+			}
+			if starts_with(entry, ".") {
+				continue
+			}
+
+			collection_files := markdown_files(collection_path)
+			if len(collection_files) == 0 {
+				continue
+			}
+
+			collection_slug := clean_slug(entry)
+			collection_title := taxonomy_label(collection_slug)
+			custom_collections = push(custom_collections, {
+				"name": entry,
+				"slug": collection_slug,
+				"title": collection_title,
+				"route": collection_slug + "/",
+				"files": collection_files
+			})
+		}
+	}
+
+	pages_data := []
+	page_file_idx := 0
+	loop {
+		if page_file_idx >= len(page_files) {
+			break
+		}
+
+		page_file := page_files[page_file_idx]
+		page_file_idx := page_file_idx + 1
+		parsed := parse_frontmatter(read_file(page_file), page_file)
+		meta := parsed["meta"]
+		if !settings["drafts"] && parse_bool_value(meta["draft"], false) {
+			continue
+		}
+		base_name := replace(basename(page_file), ".md", "")
+		slug := clean_slug(base_name)
+		override_slug := custom_slug_override(meta)
+		if len(override_slug) > 0 {
+			slug := override_slug
+		}
+		title := trim(to_string(meta["title"]))
+		if len(title) == 0 {
+			title := base_name
+		}
+		description := trim(to_string(meta["description"]))
+		if len(description) == 0 {
+			description := settings["site_tagline"]
+		}
+		keywords := trim(to_string(meta["keywords"]))
+		seo_title := trim(to_string(meta["seo_title"]))
+		seo_description := trim(to_string(meta["seo_description"]))
+		if len(seo_description) == 0 {
+			seo_description = description
+		}
+		lang := normalize_lang(meta["lang"])
+		canonical := trim(to_string(meta["canonical"]))
+		featured_image := trim(to_string(meta["featured_image"]))
+		author_name := resolve_lookup(meta["author"], authors_lookup, "")
+		page_categories := meta_terms(meta, "categories", categories_lookup)
+		page_tags := meta_terms(meta, "tags", tags_lookup)
+		page_custom_taxonomies_html := custom_taxonomies_html(meta, "pages", taxonomy_lookups, reserved_taxonomy_slots, has_custom_tax_lookups)
+		page_public_taxonomies := {}
+		if settings["webmcp"] && !parse_bool_value(meta["draft"], false) {
+			page_public_taxonomies = resolve_taxonomy_groups(meta, "pages", taxonomy_lookups)
+		}
+			pages_data = push(pages_data, {
+				"title": title,
+				"nav_title": trim(to_string(meta["nav_title"])),
+				"slug": slug,
+				"route": slug + "/",
+			"source_file": page_file,
+			"description": description,
+			"keywords": keywords,
+			"seo_title": seo_title,
+			"seo_description": seo_description,
+			"lang": lang,
+			"canonical": canonical,
+			"featured_image": featured_image,
+			"author": author_name,
+			"categories": page_categories,
+				"tags": page_tags,
+				"taxonomies": page_public_taxonomies,
+				"taxonomies_html": page_custom_taxonomies_html,
+			"body": parsed["body"],
+				"template": template_override_name(meta["template"], page_file),
+				"draft": parse_bool_value(meta["draft"], false),
+				"nav_hide": parse_bool_value(meta["nav_hide"], false),
+				"date": trim(to_string(meta["date"])),
+				"section": trim(to_string(meta["section"])),
+				"audience": trim(to_string(meta["audience"])),
+				"difficulty": trim(to_string(meta["difficulty"])),
+				"status": trim(to_string(meta["status"])),
+				"version": trim(to_string(meta["version"])),
+				"prerequisites": meta["prerequisites"],
+				"previous": trim(to_string(meta["previous"])),
+				"next": trim(to_string(meta["next"])),
+				"last_updated": trim(to_string(meta["last_updated"])),
+				"search_exclude": parse_bool_value(meta["search_exclude"], false),
+				"order": parse_int_value(meta["order"], 1000)
+			})
+		}
+
+	# Sitemap is built incrementally as a string (O(n)) instead of accumulating
+	# a routes array (O(n^2) under copy-on-write).
+	blog_prefix := ""
+	if len(settings["blog_slug"]) > 0 {
+		blog_prefix := settings["blog_slug"] + "/"
+	}
+	want_sitemap := !settings["no_aux"] && len(site_url) > 0
+	# Flat .html redirect aliases are an extra (the reference SSG emits only clean
+	# dir/index.html). On large sites they double per-page write I/O, so they can be
+	# turned off with --no-aliases; default keeps them for clean-URL convenience.
+	make_aliases := !settings["no_aliases"]
+	# Large accumulators are streamed to temp files: both array push and string
+	# concatenation are O(n^2) in Kujo, but file append is O(1). In sharded mode
+	# each posts worker writes its own records/sitemap temp files, which the
+	# finalize phase reads back and merges.
+	sitemap_tmp := path_join(output_dir, ".kujo-sitemap.tmp")
+	records_tmp := path_join(output_dir, ".kujo-post-index.tmp")
+	if phase == "posts" {
+		records_tmp = path_join(output_dir, ".kujo-records-" + to_string(shard) + ".tmp")
+		sitemap_tmp = path_join(output_dir, ".kujo-sitemap-posts-" + to_string(shard) + ".tmp")
+	} else if phase == "finalize" {
+		sitemap_tmp = path_join(output_dir, ".kujo-sitemap-final.tmp")
+	}
+	if path_exists(sitemap_tmp) {
+		delete_file(sitemap_tmp)
+	}
+	if path_exists(records_tmp) {
+		delete_file(records_tmp)
+	}
+	webmcp_records_tmp := path_join(output_dir, ".kujo-webmcp-records.tmp")
+	if phase == "posts" {
+		webmcp_records_tmp = path_join(output_dir, ".kujo-webmcp-records-" + to_string(shard) + ".tmp")
+	} else if phase == "finalize" {
+		webmcp_records_tmp = path_join(output_dir, ".kujo-webmcp-final.tmp")
+	}
+	if settings["webmcp"] && path_exists(webmcp_records_tmp) {
+		delete_file(webmcp_records_tmp)
+	}
+
+	built_pages := []
+	storefront_preview_cards := ""
+	location_preview_cards := ""
+	page_data_idx := 0
+	loop {
+		if page_data_idx >= len(pages_data) || !do_finalize {
+			break
+		}
+
+		page_data := pages_data[page_data_idx]
+		page_data_idx := page_data_idx + 1
+		selected_page_template := page_template
+		custom_template_name := page_data["template"]
+		if len(custom_template_name) > 0 {
+			custom_page_template := path_join(templates_dir, "page-" + custom_template_name + ".html")
+			if path_exists(custom_page_template) {
+				selected_page_template := read_file(custom_page_template)
+			}
+		}
+			processed_page_featured_image := process_featured_image_path(page_data["featured_image"], page_data["source_file"], settings)
+			page_featured_image_url := resolve_media_url(processed_page_featured_image, route_prefix(page_data["route"]))
+			page_navigation := build_navigation(pages_data, custom_collections, page_data["route"], settings["blog_slug"])
+
+			page_body_html := docs_body_html(page_data["body"])
+			page_meta_for_docs := {
+				"section": page_data["section"],
+				"audience": page_data["audience"],
+				"difficulty": page_data["difficulty"],
+				"status": page_data["status"],
+				"version": page_data["version"],
+				"last_updated": page_data["last_updated"],
+				"date": page_data["date"]
+			}
+			page_inner := apply_template(selected_page_template, {
+				"title": template_text(page_data["title"]),
+				"description": template_text(page_data["description"]),
+				"section": template_text(page_data["section"]),
+				"audience": template_text(page_data["audience"]),
+				"difficulty": template_text(page_data["difficulty"]),
+				"status": template_text(page_data["status"]),
+				"version": template_text(page_data["version"]),
+				"last_updated": template_text(page_data["last_updated"]),
+				"prerequisites_html": docs_list_html(page_data["prerequisites"], "docs-prerequisites-list"),
+				"docs_meta_html": docs_meta_html(page_meta_for_docs),
+				"toc": docs_toc_html(page_data["body"]),
+				"previous": template_text(page_data["previous"]),
+				"next": template_text(page_data["next"]),
+				"prev_next_html": docs_prev_next_html(page_data["previous"], page_data["next"]),
+				"navigation": page_navigation,
+				"featured_image_html": featured_image_html_tag(page_featured_image_url, page_data["title"]),
+				"categories_html": taxonomy_terms_html(page_data["categories"]),
+				"tags_html": taxonomy_terms_html(page_data["tags"]),
+				"taxonomies_html": page_data["taxonomies_html"],
+				"body": page_body_html
+			})
+			page_html := render_layout(
+			layout_template,
+			settings,
+			page_data["route"],
+			page_data["title"],
+			page_data["description"],
+			page_navigation,
+			page_inner,
+			{
+				"seo_title": page_data["seo_title"],
+				"seo_description": page_data["seo_description"],
+				"seo_keywords": page_data["keywords"],
+				"lang": page_data["lang"],
+				"canonical": page_data["canonical"],
+				"featured_image": processed_page_featured_image,
+				"author": page_data["author"]
+			}
+		)
+		write_route_page(output_dir, page_data["route"], page_html)
+		write_route_alias(output_dir, page_data["route"], make_aliases)
+		if want_sitemap {
+			page_lastmod := parse_post_date(page_data["date"])
+			append_file(sitemap_tmp, sitemap_url_entry(site_url, page_data["route"], page_lastmod["iso"], blog_prefix))
+		}
+		built_pages = push(built_pages, page_data)
+		if settings["webmcp"] && !page_data["draft"] {
+			page_published := parse_post_date(page_data["date"])
+			page_updated := parse_post_date(page_data["last_updated"])
+			page_record := public_content_record(
+				"pages",
+				page_data["slug"],
+				page_data["route"],
+				page_data["title"],
+				page_data["description"],
+				excerpt_from_markdown(page_data["body"]),
+				page_data["lang"],
+				!page_data["search_exclude"],
+				page_data["taxonomies"],
+				page_published["iso"],
+				page_updated["iso"],
+				settings["site_url"]
+			)
+			append_file(webmcp_records_tmp, public_record_line(page_record) + "\n")
+		}
+	}
+
+	# Posts accumulate as escaped tab-delimited record lines streamed to a temp file
+	# (O(1) appends); the index is materialized once via read+split and ordered
+	# once via the native sort().
+	post_count := 0
+	newest_date_sort := 0
+	newest_rfc822 := ""
+	post_file_idx := 0
+	loop {
+		if post_file_idx >= len(post_files) || !do_posts {
+			break
+		}
+
+		current_post_index := post_file_idx
+		post_file := post_files[post_file_idx]
+		post_file_idx := post_file_idx + 1
+		# Shard filter: in "full" mode shards==1 so every post is rendered here;
+		# in "posts" mode each worker renders only its stripe of the posts.
+		post_stripe := current_post_index % shards
+		if post_stripe != shard {
+			continue
+		}
+		parsed := parse_frontmatter(read_file(post_file), post_file)
+		meta := parsed["meta"]
+		post_is_draft := parse_bool_value(meta["draft"], false)
+		if !settings["drafts"] && post_is_draft {
+			continue
+		}
+
+		base_name := replace(basename(post_file), ".md", "")
+		slug := clean_slug(base_name)
+		override_slug := custom_slug_override(meta)
+		if len(override_slug) > 0 {
+			slug := override_slug
+		}
+
+		title := trim(to_string(meta["title"]))
+		if len(title) == 0 {
+			title := base_name
+		}
+
+		author_name := resolve_lookup(meta["author"], authors_lookup, "Unknown Author")
+		categories := meta_terms(meta, "categories", categories_lookup)
+		tags := meta_terms(meta, "tags", tags_lookup)
+		color_terms := meta_terms(meta, "color", color_lookup)
+		post_custom_taxonomies_html := custom_taxonomies_html(meta, "posts", taxonomy_lookups, reserved_taxonomy_slots, has_custom_tax_lookups)
+
+		description := trim(to_string(meta["description"]))
+		if len(description) == 0 {
+			description := settings["site_tagline"]
+		}
+		keywords := trim(to_string(meta["keywords"]))
+		seo_title := trim(to_string(meta["seo_title"]))
+		seo_description := trim(to_string(meta["seo_description"]))
+		if len(seo_description) == 0 {
+			seo_description = description
+		}
+		lang := normalize_lang(meta["lang"])
+		canonical := trim(to_string(meta["canonical"]))
+		featured_image := trim(to_string(meta["featured_image"]))
+		featured_image = process_featured_image_path(featured_image, post_file, settings)
+
+		excerpt := trim(to_string(meta["excerpt"]))
+		if len(excerpt) == 0 {
+			excerpt := excerpt_from_markdown(parsed["body"])
+		} else {
+			excerpt := trim(regex_replace(regex_replace(markdown_to_html(excerpt), "<[^>]+>", " "), "\\s+", " "))
+		}
+
+		post_date_raw := trim(to_string(meta["date"]))
+		post_date := parse_post_date(post_date_raw)
+		post_date_display := post_date_raw
+		if post_date["valid"] {
+			post_date_display = post_date["display"]
+		}
+
+		category_text := ""
+		if len(categories) > 0 {
+			category_text := categories[0]
+		}
+
+		route := ""
+		if len(settings["blog_slug"]) > 0 && !settings["posts_at_root"] {
+			route := settings["blog_slug"] + "/" + slug + "/"
+		} else {
+			route := slug + "/"
+		}
+
+		selected_post_template := post_template
+		custom_template_name := template_override_name(meta["template"], post_file)
+		if len(custom_template_name) > 0 {
+			custom_post_template := path_join(templates_dir, "post-" + custom_template_name + ".html")
+			if path_exists(custom_post_template) {
+				selected_post_template := read_file(custom_post_template)
+			}
+			}
+			post_featured_image_url := resolve_media_url(featured_image, route_prefix(route))
+			post_navigation := build_navigation(pages_data, custom_collections, route, settings["blog_slug"])
+			post_body_html := docs_body_html(parsed["body"])
+			post_meta_for_docs := {
+				"section": trim(to_string(meta["section"])),
+				"audience": trim(to_string(meta["audience"])),
+				"difficulty": trim(to_string(meta["difficulty"])),
+				"status": trim(to_string(meta["status"])),
+				"version": trim(to_string(meta["version"])),
+				"last_updated": trim(to_string(meta["last_updated"])),
+				"date": post_date_raw
+			}
+
+			post_inner := apply_template(selected_post_template, {
+				"title": template_text(title),
+				"description": template_text(description),
+				"author": template_text(author_name),
+				"date": template_text(post_date_display),
+				"section": template_text(meta["section"]),
+				"audience": template_text(meta["audience"]),
+				"difficulty": template_text(meta["difficulty"]),
+				"status": template_text(meta["status"]),
+				"version": template_text(meta["version"]),
+				"last_updated": template_text(meta["last_updated"]),
+				"prerequisites_html": docs_list_html(meta["prerequisites"], "docs-prerequisites-list"),
+				"docs_meta_html": docs_meta_html(post_meta_for_docs),
+				"toc": docs_toc_html(parsed["body"]),
+				"previous": template_text(meta["previous"]),
+				"next": template_text(meta["next"]),
+				"prev_next_html": docs_prev_next_html(meta["previous"], meta["next"]),
+				"navigation": post_navigation,
+				"category": template_text(category_text),
+				"categories": template_text(join(categories, ", ")),
+			"categories_html": taxonomy_terms_html(categories),
+			"tags": template_text(join(tags, ", ")),
+			"tags_html": taxonomy_terms_html(tags),
+			"colors_html": taxonomy_terms_html(color_terms),
+				"taxonomies_html": post_custom_taxonomies_html,
+				"featured_image_html": featured_image_html_tag(post_featured_image_url, title),
+				"body": post_body_html
+			})
+
+			post_html := render_layout(
+			layout_template,
+			settings,
+			route,
+			title,
+			description,
+			post_navigation,
+			post_inner,
+			{
+				"seo_title": seo_title,
+				"seo_description": seo_description,
+				"seo_keywords": keywords,
+				"lang": lang,
+				"canonical": canonical,
+				"featured_image": featured_image,
+				"author": author_name,
+				"og_type": "article",
+				"published_iso": post_date["iso"]
+			}
+		)
+		write_route_page(output_dir, route, post_html)
+		write_route_alias(output_dir, route, make_aliases)
+
+		if want_sitemap {
+			append_file(sitemap_tmp, sitemap_url_entry(site_url, route, post_date["iso"], blog_prefix))
+		}
+
+		if post_date["sort_key"] > newest_date_sort {
+			newest_date_sort = post_date["sort_key"]
+			newest_rfc822 = post_date["rfc822"]
+		}
+
+		order_val := parse_int_value(meta["order"], 1000)
+		post_sort_key := post_sort_prefix(settings["sort_by"], post_date["sort_key"], title, author_name, order_val)
+		post_record := post_sort_key + "\t" + encode_post_record_field(route) + "\t" + encode_post_record_field(title) + "\t" + encode_post_record_field(excerpt) + "\t" + encode_post_record_field(featured_image) + "\t" + encode_post_record_tags(tags) + "\t" + encode_post_record_field(post_date["rfc822"]) + "\t" + encode_post_record_field(post_date["iso"])
+		append_file(records_tmp, post_record + "\n")
+		if settings["webmcp"] && !post_is_draft {
+			post_updated := parse_post_date(meta["last_updated"])
+			public_post := public_content_record(
+				"posts",
+				slug,
+				route,
+				title,
+				description,
+				excerpt,
+				lang,
+				!parse_bool_value(meta["search_exclude"], false),
+				resolve_taxonomy_groups(meta, "posts", taxonomy_lookups),
+				post_date["iso"],
+				post_updated["iso"],
+				settings["site_url"]
+			)
+			append_file(webmcp_records_tmp, public_record_line(public_post) + "\n")
+		}
+		post_count := post_count + 1
+	}
+
+	# Posts phase: this worker rendered its stripe of posts and wrote its shard
+	# record/sitemap temp files. The finalize phase assembles everything else.
+	if phase == "posts" {
+		print_lines([
+			"Posts phase complete (shard " + to_string(shard) + " of " + to_string(shards) + ")",
+			"  Posts rendered: " + to_string(post_count)
+		])
+		return null
+	}
+
+	# Materialize and order the post index in a few native, near-linear calls.
+	# In finalize, merge every shard's record file first.
+	posts_sorted := []
+	combined_records := ""
+	if phase == "finalize" {
+		merge_shard_idx := 0
+		loop {
+			if merge_shard_idx >= shards {
+				break
+			}
+			shard_records := path_join(output_dir, ".kujo-records-" + to_string(merge_shard_idx) + ".tmp")
+			merge_shard_idx := merge_shard_idx + 1
+			if path_exists(shard_records) {
+				shard_chunk := trim(read_file(shard_records))
+				if len(shard_chunk) > 0 {
+					if len(combined_records) > 0 {
+						combined_records = combined_records + "\n"
+					}
+					combined_records = combined_records + shard_chunk
+				}
+			}
+		}
+	} else if post_count > 0 && path_exists(records_tmp) {
+		combined_records = trim(read_file(records_tmp))
+		delete_file(records_tmp)
+	}
+	if len(combined_records) > 0 {
+		posts_sorted = sort(split(combined_records, "\n"))
+	}
+
+	# In finalize, posts weren't re-rendered here, so derive the newest post date
+	# (for RSS lastBuildDate) from the merged records.
+	if phase == "finalize" {
+		newest_iso := ""
+		newest_scan_idx := 0
+		loop {
+			if newest_scan_idx >= len(posts_sorted) {
+				break
+			}
+			scan_record := parse_post_record(posts_sorted[newest_scan_idx])
+			newest_scan_idx := newest_scan_idx + 1
+			scan_iso := trim(to_string(scan_record["date_iso"]))
+			if len(scan_iso) == 10 && scan_iso > newest_iso {
+				newest_iso = scan_iso
+				newest_rfc822 = trim(to_string(scan_record["date_rfc822"]))
+			}
+		}
+	}
+
+	llms_collections_tmp := path_join(output_dir, ".kujo-llms-collections.tmp")
+	if path_exists(llms_collections_tmp) {
+		delete_file(llms_collections_tmp)
+	}
+	collection_idx := 0
+	loop {
+		if collection_idx >= len(custom_collections) {
+			break
+		}
+
+		collection := custom_collections[collection_idx]
+		collection_idx := collection_idx + 1
+		collection_slug := collection["slug"]
+		collection_title := collection["title"]
+		collection_files := collection["files"]
+		collection_items := []
+
+		default_collection_item_template := post_template
+		collection_item_template_path := path_join(templates_dir, collection_slug + ".html")
+		if path_exists(collection_item_template_path) {
+			default_collection_item_template := read_file(collection_item_template_path)
+		}
+
+		collection_file_idx := 0
+		loop {
+			if collection_file_idx >= len(collection_files) {
+				break
+			}
+
+			item_file := collection_files[collection_file_idx]
+			collection_file_idx := collection_file_idx + 1
+			parsed := parse_frontmatter(read_file(item_file), item_file)
+			meta := parsed["meta"]
+			item_is_draft := parse_bool_value(meta["draft"], false)
+			if !settings["drafts"] && item_is_draft {
+				continue
+			}
+
+			base_name := replace(basename(item_file), ".md", "")
+			slug := clean_slug(base_name)
+			override_slug := custom_slug_override(meta)
+			if len(override_slug) > 0 {
+				slug := override_slug
+			}
+
+			title := trim(to_string(meta["title"]))
+			if len(title) == 0 {
+				title := base_name
+			}
+
+			description := trim(to_string(meta["description"]))
+			if len(description) == 0 {
+				description := settings["site_tagline"]
+			}
+			keywords := trim(to_string(meta["keywords"]))
+			seo_title := trim(to_string(meta["seo_title"]))
+			seo_description := trim(to_string(meta["seo_description"]))
+			if len(seo_description) == 0 {
+				seo_description = description
+			}
+			lang := normalize_lang(meta["lang"])
+			canonical := trim(to_string(meta["canonical"]))
+			featured_image := trim(to_string(meta["featured_image"]))
+			featured_image = process_featured_image_path(featured_image, item_file, settings)
+
+			excerpt := trim(to_string(meta["excerpt"]))
+			if len(excerpt) == 0 {
+				excerpt := excerpt_from_markdown(parsed["body"])
+			} else {
+				excerpt := trim(regex_replace(regex_replace(markdown_to_html(excerpt), "<[^>]+>", " "), "\\s+", " "))
+			}
+
+			item_date_raw := trim(to_string(meta["date"]))
+			item_date := parse_post_date(item_date_raw)
+			item_date_display := item_date_raw
+			if item_date["valid"] {
+				item_date_display = item_date["display"]
+			}
+
+			item_categories := meta_terms(meta, "categories", categories_lookup)
+			tags := meta_terms(meta, "tags", tags_lookup)
+			color_terms := meta_terms(meta, "color", color_lookup)
+			location_terms := meta_terms(meta, "location", locations_lookup)
+			item_custom_taxonomies_html := custom_taxonomies_html(meta, collection_slug, taxonomy_lookups, reserved_taxonomy_slots, has_custom_tax_lookups)
+
+			item_category_text := collection_title
+			if len(item_categories) > 0 {
+				item_category_text = item_categories[0]
+			}
+
+			route := collection_slug + "/" + slug + "/"
+
+			selected_collection_template := default_collection_item_template
+			custom_template_name := template_override_name(meta["template"], item_file)
+			if len(custom_template_name) > 0 {
+				custom_collection_template := path_join(templates_dir, "post-" + custom_template_name + ".html")
+				if path_exists(custom_collection_template) {
+					selected_collection_template := read_file(custom_collection_template)
+				}
+				}
+				item_featured_image_url := resolve_media_url(featured_image, route_prefix(route))
+				item_navigation := build_navigation(pages_data, custom_collections, route, settings["blog_slug"])
+				item_body_html := docs_body_html(parsed["body"])
+				item_meta_for_docs := {
+					"section": trim(to_string(meta["section"])),
+					"audience": trim(to_string(meta["audience"])),
+					"difficulty": trim(to_string(meta["difficulty"])),
+					"status": trim(to_string(meta["status"])),
+					"version": trim(to_string(meta["version"])),
+					"last_updated": trim(to_string(meta["last_updated"])),
+					"date": item_date_raw
+				}
+
+				item_inner := apply_template(selected_collection_template, {
+					"title": template_text(title),
+					"description": template_text(description),
+					"author": template_text(resolve_lookup(meta["author"], authors_lookup, "Unknown Author")),
+					"date": template_text(item_date_display),
+					"section": template_text(meta["section"]),
+					"audience": template_text(meta["audience"]),
+					"difficulty": template_text(meta["difficulty"]),
+					"status": template_text(meta["status"]),
+					"version": template_text(meta["version"]),
+					"last_updated": template_text(meta["last_updated"]),
+					"prerequisites_html": docs_list_html(meta["prerequisites"], "docs-prerequisites-list"),
+					"docs_meta_html": docs_meta_html(item_meta_for_docs),
+					"toc": docs_toc_html(parsed["body"]),
+					"previous": template_text(meta["previous"]),
+					"next": template_text(meta["next"]),
+					"prev_next_html": docs_prev_next_html(meta["previous"], meta["next"]),
+					"navigation": item_navigation,
+					"category": template_text(item_category_text),
+					"categories": template_text(join(item_categories, ", ")),
+				"categories_html": taxonomy_terms_html(item_categories),
+				"tags": template_text(join(tags, ", ")),
+				"tags_html": taxonomy_terms_html(tags),
+				"colors_html": taxonomy_terms_html(color_terms),
+				"locations_html": taxonomy_terms_html(location_terms),
+					"taxonomies_html": item_custom_taxonomies_html,
+					"featured_image_html": featured_image_html_tag(item_featured_image_url, title),
+					"body": item_body_html
+				})
+				item_author_name := resolve_lookup(meta["author"], authors_lookup, "Unknown Author")
+
+				item_html := render_layout(
+				layout_template,
+				settings,
+				route,
+				title,
+				description,
+				item_navigation,
+				item_inner,
+				{
+					"seo_title": seo_title,
+					"seo_description": seo_description,
+					"seo_keywords": keywords,
+					"lang": lang,
+					"canonical": canonical,
+					"featured_image": featured_image,
+					"author": item_author_name,
+					"og_type": "article",
+					"published_iso": item_date["iso"]
+				}
+			)
+			write_route_page(output_dir, route, item_html)
+			write_route_alias(output_dir, route, make_aliases)
+
+			if want_sitemap {
+				append_file(sitemap_tmp, sitemap_url_entry(site_url, route, item_date["iso"], blog_prefix))
+			}
+			collection_items = push(collection_items, {
+				"title": title,
+				"author": item_author_name,
+				"date": item_date_raw,
+				"date_display": item_date_display,
+				"date_sort_key": item_date["sort_key"],
+				"date_rfc822": item_date["rfc822"],
+				"date_iso": item_date["iso"],
+				"description": description,
+				"excerpt": excerpt,
+				"featured_image": featured_image,
+				"tags": tags,
+				"location_terms": location_terms,
+				"route": route,
+				"order": parse_int_value(meta["order"], 1000)
+			})
+			if settings["webmcp"] && !item_is_draft {
+				item_updated := parse_post_date(meta["last_updated"])
+				public_item := public_content_record(
+					collection_slug,
+					slug,
+					route,
+					title,
+					description,
+					excerpt,
+					lang,
+					!parse_bool_value(meta["search_exclude"], false),
+					resolve_taxonomy_groups(meta, collection_slug, taxonomy_lookups),
+					item_date["iso"],
+					item_updated["iso"],
+					settings["site_url"]
+				)
+				append_file(webmcp_records_tmp, public_record_line(public_item) + "\n")
+			}
+		}
+
+		if len(collection_items) == 0 {
+			continue
+		}
+
+		sorted_collection_items := sort_posts(collection_items, settings["sort_by"])
+		collection_cards := ""
+		preview_cards := ""
+		location_cards := ""
+		preview_count := 0
+		sorted_item_idx := 0
+		loop {
+			if sorted_item_idx >= len(sorted_collection_items) {
+				break
+			}
+
+			item := sorted_collection_items[sorted_item_idx]
+			sorted_item_idx := sorted_item_idx + 1
+			item_action_label := "View Product"
+			if collection_slug == "storefronts" {
+				item_action_label = "View Storefront"
+			}
+			collection_cards := collection_cards + listing_card_html(item["route"], item["title"], item["excerpt"], item["featured_image"], item["tags"], item_action_label)
+			if preview_count < 6 {
+				preview_cards = preview_cards + listing_card_html(item["route"], item["title"], item["excerpt"], item["featured_image"], item["tags"], item_action_label)
+				if collection_slug == "storefronts" {
+					location_cards = location_cards + listing_card_html(item["route"], item["title"], item["excerpt"], item["featured_image"], item["location_terms"], "View Location")
+				}
+				preview_count := preview_count + 1
+			}
+		}
+		if collection_slug == "storefronts" {
+			storefront_preview_cards = preview_cards
+			location_preview_cards = location_cards
+		}
+
+		listing_route := collection_slug + "/"
+		listing_content := "<main class=\"container max-w-2xl m-auto py-10 px-4\" id=\"main-content\"><h1 class=\"text-6xl font-bold mb-8 pb-8 text-links font-heading-bold border-b border-primary page-title\">" + collection_title + "</h1><ul class=\"card-grid\">" + collection_cards + "</ul></main>"
+		listing_template_path := path_join(templates_dir, "page-" + collection_slug + ".html")
+		if path_exists(listing_template_path) {
+			listing_template := read_file(listing_template_path)
+			listing_content = apply_template(listing_template, {
+				"title": collection_title,
+				"content_type": collection_slug,
+				"cards": collection_cards,
+				"items": collection_cards,
+				"posts": collection_cards,
+				"pagination": "",
+				"description": settings["site_tagline"]
+			})
+		}
+
+		listing_navigation := build_navigation(pages_data, custom_collections, listing_route, settings["blog_slug"])
+		listing_html := render_layout(
+			layout_template,
+			settings,
+			listing_route,
+			collection_title + " - " + settings["site_title"],
+			settings["site_tagline"],
+			listing_navigation,
+			listing_content,
+			{
+				"seo_title": collection_title,
+				"seo_description": settings["site_tagline"],
+				"lang": "en"
+			}
+		)
+		write_route_page(output_dir, listing_route, listing_html)
+		write_route_alias(output_dir, listing_route, make_aliases)
+		if want_sitemap {
+			append_file(sitemap_tmp, sitemap_url_entry(site_url, listing_route, "", blog_prefix))
+		}
+		if settings["llms"] == "public" && len(site_url) > 0 && !settings["no_aux"] {
+			append_file(llms_collections_tmp, "\n## " + collection_title + "\n")
+			append_file(llms_collections_tmp, "- [" + collection_title + " index](" + site_url + "/" + listing_route + ")\n")
+			llms_item_idx := 0
+			loop {
+				if llms_item_idx >= len(sorted_collection_items) {
+					break
+				}
+
+				item := sorted_collection_items[llms_item_idx]
+				llms_item_idx := llms_item_idx + 1
+				append_file(llms_collections_tmp, "- [" + item["title"] + "](" + site_url + "/" + item["route"] + ")\n")
+			}
+		}
+	}
+
+	if settings["webmcp"] {
+		webmcp_record_paths := [webmcp_records_tmp]
+		if phase == "finalize" {
+			webmcp_shard_idx := 0
+			loop {
+				if webmcp_shard_idx >= shards {
+					break
+				}
+				webmcp_record_paths = push(webmcp_record_paths, path_join(output_dir, ".kujo-webmcp-records-" + to_string(webmcp_shard_idx) + ".tmp"))
+				webmcp_shard_idx := webmcp_shard_idx + 1
+			}
+		}
+		write_public_site_index(settings, pages_data, custom_collections, webmcp_record_paths)
+	}
+
+	total_posts := len(posts_sorted)
+	total_pages := 1
+	if total_posts > 0 {
+		total_pages := total_posts / settings["posts_per_page"]
+		if total_posts % settings["posts_per_page"] != 0 {
+			total_pages := total_pages + 1
+		}
+	}
+
+	if !settings["no_index"] {
+		featured_posts_cards := ""
+		featured_posts_limit := 4
+		featured_idx := 0
+		loop {
+			if featured_idx >= total_posts || featured_idx >= featured_posts_limit {
+				break
+			}
+			featured_post := parse_post_record(posts_sorted[featured_idx])
+			featured_posts_cards = featured_posts_cards + listing_card_html(featured_post["route"], featured_post["title"], featured_post["excerpt"], featured_post["featured_image"], featured_post["tags"], "Read Article")
+			featured_idx := featured_idx + 1
+		}
+
+		page_num := 1
+		loop {
+			if page_num > total_pages {
+				break
+			}
+
+			start_idx := (page_num - 1) * settings["posts_per_page"]
+			end_idx := start_idx + settings["posts_per_page"]
+			if end_idx > total_posts {
+				end_idx := total_posts
+			}
+
+			cards := ""
+			i := start_idx
+			loop {
+				if i >= end_idx {
+					break
+				}
+				post := parse_post_record(posts_sorted[i])
+				cards := cards + listing_card_html(post["route"], post["title"], post["excerpt"], post["featured_image"], post["tags"], "Read Article")
+				i := i + 1
+			}
+
+			index_posts_html := "<ul class=\"card-grid\">" + cards + "</ul>"
+			index_pagination := build_pagination_links(page_num, total_pages, "")
+			index_content := "<main class=\"container max-w-2xl m-auto py-10 px-4\" id=\"main-content\"><h1 class=\"text-6xl font-bold mb-8 pb-8 text-links font-heading-bold border-b border-primary page-title\">" + html_escape(settings["site_title"]) + "</h1>" + index_posts_html + index_pagination + "</main>"
+			if len(home_listing_template) > 0 {
+				storefront_preview := storefront_preview_cards
+				location_preview := location_preview_cards
+				if len(location_preview) == 0 {
+					location_preview = storefront_preview
+				}
+				index_content = apply_template(home_listing_template, {
+					"title": template_text(settings["site_title"]),
+					"description": template_text(settings["site_tagline"]),
+					"cards": cards,
+					"items": cards,
+					"posts": cards,
+					"featured_posts_html": featured_posts_cards,
+					"featured_storefronts_html": storefront_preview,
+					"featured_locations_html": location_preview,
+					"posts_html": index_posts_html,
+					"pagination": index_pagination,
+					"page_number": page_num,
+					"total_pages": total_pages,
+					"blog_slug": settings["blog_slug"]
+				})
+			}
+
+			index_route := ""
+			if page_num > 1 {
+				index_route := "page/" + to_string(page_num) + "/"
+			}
+
+			index_navigation := build_navigation(pages_data, custom_collections, index_route, settings["blog_slug"])
+			index_html := render_layout(
+				layout_template,
+				settings,
+				index_route,
+				settings["site_title"],
+				settings["site_tagline"],
+				index_navigation,
+				index_content,
+				{
+					"seo_title": settings["site_title"],
+					"seo_description": settings["site_tagline"],
+					"lang": "en"
+				}
+			)
+			write_route_page(output_dir, index_route, index_html)
+			write_route_alias(output_dir, index_route, make_aliases)
+			if want_sitemap {
+				append_file(sitemap_tmp, sitemap_url_entry(site_url, index_route, "", blog_prefix))
+			}
+
+			if len(settings["blog_slug"]) > 0 {
+				blog_route := settings["blog_slug"] + "/"
+				if page_num > 1 {
+					blog_route := settings["blog_slug"] + "/page/" + to_string(page_num) + "/"
+				}
+
+				blog_posts_html := "<ul class=\"card-grid\">" + cards + "</ul>"
+				blog_pagination := build_pagination_links(page_num, total_pages, settings["blog_slug"] + "/")
+				blog_content := "<main class=\"container max-w-2xl m-auto py-10 px-4\" id=\"main-content\"><h1 class=\"text-6xl font-bold mb-8 pb-8 text-links font-heading-bold border-b border-primary page-title\">Blog</h1>" + blog_posts_html + blog_pagination + "</main>"
+				if len(blog_listing_template) > 0 {
+					blog_content = apply_template(blog_listing_template, {
+						"title": "Blog",
+						"description": template_text(settings["site_tagline"]),
+						"cards": cards,
+						"items": cards,
+						"posts": cards,
+						"posts_html": blog_posts_html,
+						"pagination": blog_pagination,
+						"page_number": page_num,
+						"total_pages": total_pages,
+						"blog_slug": settings["blog_slug"]
+					})
+				}
+
+				blog_navigation := build_navigation(pages_data, custom_collections, blog_route, settings["blog_slug"])
+				blog_html := render_layout(
+					layout_template,
+					settings,
+					blog_route,
+					"Blog - " + settings["site_title"],
+					settings["site_tagline"],
+					blog_navigation,
+					blog_content,
+					{
+						"seo_title": "Blog",
+						"seo_description": settings["site_tagline"],
+						"lang": "en"
+					}
+				)
+				write_route_page(output_dir, blog_route, blog_html)
+				write_route_alias(output_dir, blog_route, make_aliases)
+				if want_sitemap {
+					append_file(sitemap_tmp, sitemap_url_entry(site_url, blog_route, "", blog_prefix))
+				}
+			}
+
+			page_num := page_num + 1
+		}
+	}
+
+	if !settings["no_aux"] {
+		if len(site_url) > 0 {
+			rss_items := ""
+			rss_limit := 20
+			rss_count := 0
+			rss_post_idx := 0
+			loop {
+				if rss_post_idx >= len(posts_sorted) || rss_count >= rss_limit {
+					break
+				}
+
+				post := parse_post_record(posts_sorted[rss_post_idx])
+				rss_post_idx := rss_post_idx + 1
+				post_url := site_url + "/" + post["route"]
+				rss_description := trim(regex_replace(regex_replace(to_string(post["excerpt"]), "<[^>]+>", " "), "\\s+", " "))
+				pub_date_tag := ""
+				post_rfc822 := trim(to_string(post["date_rfc822"]))
+				if len(post_rfc822) > 0 {
+					pub_date_tag = "<pubDate>" + post_rfc822 + "</pubDate>"
+				}
+				rss_items := rss_items + "<item><title>" + xml_escape(post["title"]) + "</title><link>" + xml_escape(post_url) + "</link><guid isPermaLink=\"true\">" + xml_escape(post_url) + "</guid>" + pub_date_tag + "<description>" + xml_escape(rss_description) + "</description></item>"
+				rss_count := rss_count + 1
+			}
+			last_build_tag := ""
+			if len(newest_rfc822) > 0 {
+				last_build_tag = "<lastBuildDate>" + newest_rfc822 + "</lastBuildDate>"
+			}
+			rss_xml := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\"><channel><title>" + xml_escape(settings["site_title"]) + "</title><link>" + xml_escape(site_url) + "</link><description>Latest posts from " + xml_escape(settings["site_title"]) + "</description>" + last_build_tag + rss_items + "</channel></rss>\n"
+			ensure_dir(path_join(output_dir, "feed"))
+			write_file(path_join(output_dir, "feed/index.xml"), rss_xml)
+
+			# Sitemap entries were streamed to a temp file during rendering. In
+			# finalize mode, also merge each posts shard's sitemap temp file.
+			sitemap_inner := ""
+			if path_exists(sitemap_tmp) {
+				sitemap_inner = read_file(sitemap_tmp)
+			}
+			if phase == "finalize" {
+				sm_shard_idx := 0
+				loop {
+					if sm_shard_idx >= shards {
+						break
+					}
+					shard_sitemap := path_join(output_dir, ".kujo-sitemap-posts-" + to_string(sm_shard_idx) + ".tmp")
+					sm_shard_idx := sm_shard_idx + 1
+					if path_exists(shard_sitemap) {
+						sitemap_inner = sitemap_inner + read_file(shard_sitemap)
+						delete_file(shard_sitemap)
+					}
+				}
+			}
+			sitemap_xml := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd\">\n" + sitemap_inner + "</urlset>\n"
+			write_file(path_join(output_dir, "sitemap.xml"), sitemap_xml)
+		} else {
+			print("Skipping RSS and sitemap (no --site-url configured)")
+		}
+
+		robots := "User-agent: *\nAllow: /\n"
+		if settings["robots"] == "private" {
+			robots := "User-agent: *\nDisallow: /\n"
+		} else if len(site_url) > 0 {
+			robots := robots + "\nSitemap: " + site_url + "/sitemap.xml\n"
+		}
+		write_file(path_join(output_dir, "robots.txt"), robots)
+
+		if settings["llms"] == "public" && len(site_url) > 0 {
+			# Streamed to the output file directly (O(1) appends) since string
+			# concatenation of a large body is O(n^2) in Kujo.
+			llms_path := path_join(output_dir, "llms.txt")
+			write_file(llms_path, "# " + settings["site_title"] + "\n\nThis site contains structured content formatted for LLM-friendly consumption.\n\n## Posts\n")
+			llms_post_idx := 0
+			loop {
+				if llms_post_idx >= len(posts_sorted) {
+					break
+				}
+
+				post := parse_post_record(posts_sorted[llms_post_idx])
+				llms_post_idx := llms_post_idx + 1
+				append_file(llms_path, "- [" + post["title"] + "](" + site_url + "/" + post["route"] + ")\n")
+			}
+			append_file(llms_path, "\n## Pages\n")
+			built_page_idx := 0
+			loop {
+				if built_page_idx >= len(built_pages) {
+					break
+				}
+
+				page_data := built_pages[built_page_idx]
+				built_page_idx := built_page_idx + 1
+				append_file(llms_path, "- [" + page_data["title"] + "](" + site_url + "/" + page_data["route"] + ")\n")
+			}
+			if path_exists(llms_collections_tmp) {
+				append_file(llms_path, read_file(llms_collections_tmp))
+				delete_file(llms_collections_tmp)
+			}
+			append_file(llms_path, "\n## Sitemap\n" + site_url + "/sitemap.xml\n")
+		}
+	}
+
+	not_found_navigation := build_navigation(pages_data, custom_collections, "", settings["blog_slug"])
+	not_found_html := render_layout(
+		layout_template,
+		settings,
+		"",
+		"Page Not Found - " + settings["site_title"],
+		"Page not found",
+		not_found_navigation,
+		not_found_template,
+		{
+			"seo_title": "Page Not Found",
+			"seo_description": "Page not found",
+			"lang": "en",
+			"webmcp_skip": true
+		}
+	)
+	write_file(path_join(output_dir, "404.html"), not_found_html)
+
+	# Remove streaming temp files so they never appear in the published output.
+	if path_exists(sitemap_tmp) {
+		delete_file(sitemap_tmp)
+	}
+	if path_exists(records_tmp) {
+		delete_file(records_tmp)
+	}
+	if path_exists(webmcp_records_tmp) {
+		delete_file(webmcp_records_tmp)
+	}
+	if phase == "finalize" {
+		cleanup_shard_idx := 0
+		loop {
+			if cleanup_shard_idx >= shards {
+				break
+			}
+			leftover_records := path_join(output_dir, ".kujo-records-" + to_string(cleanup_shard_idx) + ".tmp")
+			leftover_sitemap := path_join(output_dir, ".kujo-sitemap-posts-" + to_string(cleanup_shard_idx) + ".tmp")
+			leftover_webmcp := path_join(output_dir, ".kujo-webmcp-records-" + to_string(cleanup_shard_idx) + ".tmp")
+			cleanup_shard_idx := cleanup_shard_idx + 1
+			if path_exists(leftover_records) {
+				delete_file(leftover_records)
+			}
+			if path_exists(leftover_sitemap) {
+				delete_file(leftover_sitemap)
+			}
+			if path_exists(leftover_webmcp) {
+				delete_file(leftover_webmcp)
+			}
+		}
+		post_manifest_cleanup := path_join(output_dir, ".kujo-post-manifest.txt")
+		if path_exists(post_manifest_cleanup) {
+			delete_file(post_manifest_cleanup)
+		}
+	}
+
+	if settings["minify"] {
+		minify_assets_recursive(path_join(output_dir, "assets"), minifier)
+	}
+
+	total_time := (performance_now() - build_start) / 1000.0
+	print_lines([
+		"Build complete",
+		"  Posts generated: " + to_string(total_posts),
+		"  Pages generated: " + to_string(len(built_pages)),
+		"  Output directory: " + output_dir,
+		"  Build time: " + to_string(total_time) + "s"
+	])
+}
+
+func report_build_errors(errors, inspect_config) {
+	if inspect_config {
+		print(to_json({"schema_version": "kujo-ssg-config/v1", "ok": false, "errors": errors}))
+	} else {
+		print_errors(errors)
+	}
+}
+
+cli_args := args()
+settings := default_settings()
+config_result := load_config(settings)
+settings := config_result["settings"]
+cli_result := apply_cli_overrides(settings, cli_args)
+settings := cli_result["settings"]
+inspect_config := cli_result["inspect_config"]
+if !inspect_config {
+	print_lines([
+		"╔════════════════════════════════════════════════╗",
+		"║        Kujo Static Site Generator              ║",
+		"╚════════════════════════════════════════════════╝",
+		""
+	])
+	if len(config_result["loaded_path"]) > 0 {
+		print("Loaded configuration from " + config_result["loaded_path"])
+	}
+}
+if len(config_result["errors"]) > 0 {
+	report_build_errors(config_result["errors"], inspect_config)
+	exit(1)
+}
+if inspect_config && (cli_result["show_help"] || cli_result["show_version"] || len(cli_result["init_format"]) > 0) {
+	cli_result["errors"] = push(cli_result["errors"], "--inspect-config cannot be combined with --init, --help, or --version")
+}
+if len(cli_result["errors"]) > 0 {
+	report_build_errors(cli_result["errors"], inspect_config)
+	if cli_result["show_help"] && !inspect_config {
+		print("")
+		print_help()
+	}
+	exit(1)
+}
+if cli_result["show_help"] {
+	print_help()
+	exit(0)
+}
+if cli_result["show_version"] {
+	print("build.kujo " + VERSION)
+	exit(0)
+}
+init_format := trim(to_string(cli_result["init_format"]))
+if len(init_format) > 0 {
+	init_project(init_format)
+	exit(0)
+}
+normalize_result := normalize_settings(settings)
+settings := normalize_result["settings"]
+if len(normalize_result["errors"]) > 0 {
+	report_build_errors(normalize_result["errors"], inspect_config)
+	exit(1)
+}
+if inspect_config {
+	# Only expose the documented routing fields, never arbitrary config keys.
+	print(to_json({"schema_version": "kujo-ssg-config/v1", "ok": true, "settings": {
+		"content": settings["content"], "output": settings["output"],
+		"templates": settings["templates"], "assets": settings["assets"],
+		"site_url": settings["site_url"]
+	}}))
+	exit(0)
+}
+if settings["watch"] {
+	print("Warning: --watch is currently not implemented.")
+}
+build_site(settings)

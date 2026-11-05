@@ -1,0 +1,145 @@
+from src.contract import valid_ability_id, valid_ability_version
+from src.internal import dict_get_or, failure, known_fields_only, valid_non_empty_string, valid_non_negative_int, json_digest
+
+export ABILITY_BINDING_SCHEMA_ID := "kujo.ability.binding/v1"
+export ABILITY_EXPOSURE_SCHEMA_ID := "kujo.ability.exposure/v1"
+export ABILITY_INVOCATION_SCHEMA_ID := "kujo.ability.invocation/v1"
+export ABILITY_POLICY_DECISION_SCHEMA_ID := "kujo.ability.policy-decision/v1"
+export ABILITY_APPROVAL_SCHEMA_ID := "kujo.ability.approval/v1"
+export ABILITY_RECEIPT_SCHEMA_ID := "kujo.ability.receipt/v1"
+
+func valid_digest(value) {
+    return type(value) == "string" && len(value) == 64 && regex_replace(value, "[0-9a-f]", "") == ""
+}
+
+func valid_identity(identity, field_name) {
+    if type(identity) != "dict" { return failure("invalid_ability_identity", field_name + " must be an object", {"field": field_name}) }
+    field_result := known_fields_only(identity, ["type", "id", "tenant_id", "claims"], "unknown_ability_identity_field", field_name + " contains an unsupported field")
+    if field_result["ok"] == false { return field_result }
+    if valid_non_empty_string(dict_get_or(identity, "type", ""), 64) == false { return failure("invalid_ability_identity", field_name + ".type is required", {"field": field_name + ".type"}) }
+    if valid_non_empty_string(dict_get_or(identity, "id", ""), 256) == false { return failure("invalid_ability_identity", field_name + ".id is required", {"field": field_name + ".id"}) }
+    tenant_id := dict_get_or(identity, "tenant_id", "")
+    if type(tenant_id) != "string" || len(tenant_id) > 256 { return failure("invalid_ability_identity", field_name + ".tenant_id must be bounded text", {"field": field_name + ".tenant_id"}) }
+    if type(dict_get_or(identity, "claims", {})) != "dict" { return failure("invalid_ability_identity", field_name + ".claims must be an object", {"field": field_name + ".claims"}) }
+    return {"ok": true}
+}
+
+export validate_ability_binding := func(binding) {
+    fields := known_fields_only(binding, ["schema", "ability_id", "ability_version", "handler_id", "handler_version", "handler", "result_mode", "timeout_ms", "metadata"], "unknown_ability_binding_field", "Ability binding contains an unsupported field")
+    if fields["ok"] == false { return fields }
+    if dict_get_or(binding, "schema", "") != ABILITY_BINDING_SCHEMA_ID { return failure("invalid_ability_binding_schema", "binding.schema must be " + ABILITY_BINDING_SCHEMA_ID, {}) }
+    if valid_ability_id(dict_get_or(binding, "ability_id", "")) == false { return failure("invalid_ability_binding_id", "binding.ability_id is invalid", {}) }
+    if valid_ability_version(dict_get_or(binding, "ability_version", "")) == false { return failure("invalid_ability_binding_version", "binding.ability_version is invalid", {}) }
+    if valid_non_empty_string(dict_get_or(binding, "handler_id", ""), 240) == false { return failure("invalid_ability_handler_id", "binding.handler_id is required", {}) }
+    if valid_ability_version(dict_get_or(binding, "handler_version", "")) == false { return failure("invalid_ability_handler_version", "binding.handler_version is invalid", {}) }
+    if type(dict_get_or(binding, "handler", null)) != "function" { return failure("invalid_ability_handler", "binding.handler must be a function", {}) }
+    result_mode := dict_get_or(binding, "result_mode", "raw")
+    if result_mode != "raw" && result_mode != "kujo.result/v1" { return failure("invalid_ability_handler_result_mode", "binding.result_mode must be raw or kujo.result/v1", {}) }
+    timeout_ms := dict_get_or(binding, "timeout_ms", 30000)
+    if valid_non_negative_int(timeout_ms) == false || timeout_ms < 1 || timeout_ms > 3600000 { return failure("invalid_ability_timeout", "binding.timeout_ms must be between 1 and 3600000", {}) }
+    if type(dict_get_or(binding, "metadata", {})) != "dict" { return failure("invalid_ability_binding_metadata", "binding.metadata must be an object", {}) }
+    return {"ok": true, "binding": binding}
+}
+
+export validate_ability_exposure := func(exposure) {
+    fields := known_fields_only(exposure, ["schema", "ability_id", "ability_version", "surface", "name", "enabled", "public", "metadata"], "unknown_ability_exposure_field", "Ability exposure contains an unsupported field")
+    if fields["ok"] == false { return fields }
+    if dict_get_or(exposure, "schema", "") != ABILITY_EXPOSURE_SCHEMA_ID { return failure("invalid_ability_exposure_schema", "exposure.schema must be " + ABILITY_EXPOSURE_SCHEMA_ID, {}) }
+    if valid_ability_id(dict_get_or(exposure, "ability_id", "")) == false { return failure("invalid_ability_exposure_id", "exposure.ability_id is invalid", {}) }
+    if valid_ability_version(dict_get_or(exposure, "ability_version", "")) == false { return failure("invalid_ability_exposure_version", "exposure.ability_version is invalid", {}) }
+    surface := dict_get_or(exposure, "surface", "")
+    if surface != "rest" && surface != "mcp" && surface != "agent" && surface != "cli" && surface != "webmcp" && surface != "sdk" { return failure("invalid_ability_exposure_surface", "exposure.surface is unsupported", {"surface": surface}) }
+    if valid_non_empty_string(dict_get_or(exposure, "name", ""), 240) == false { return failure("invalid_ability_exposure_name", "exposure.name is required", {}) }
+    if type(dict_get_or(exposure, "enabled", null)) != "bool" { return failure("invalid_ability_exposure_enabled", "exposure.enabled must be boolean", {}) }
+    if type(dict_get_or(exposure, "public", null)) != "bool" { return failure("invalid_ability_exposure_public", "exposure.public must be boolean", {}) }
+    if type(dict_get_or(exposure, "metadata", {})) != "dict" { return failure("invalid_ability_exposure_metadata", "exposure.metadata must be an object", {}) }
+    return {"ok": true, "exposure": exposure}
+}
+
+export validate_ability_invocation := func(invocation) {
+    fields := known_fields_only(invocation, ["schema", "invocation_id", "ability_id", "ability_version", "definition_digest", "input", "principal", "request_id", "trace_id", "surface", "idempotency_key", "approval", "metadata"], "unknown_ability_invocation_field", "Ability invocation contains an unsupported field")
+    if fields["ok"] == false { return fields }
+    if dict_get_or(invocation, "schema", "") != ABILITY_INVOCATION_SCHEMA_ID { return failure("invalid_ability_invocation_schema", "invocation.schema must be " + ABILITY_INVOCATION_SCHEMA_ID, {}) }
+    if valid_non_empty_string(dict_get_or(invocation, "invocation_id", ""), 240) == false { return failure("invalid_ability_invocation_id", "invocation.invocation_id is required", {}) }
+    if valid_ability_id(dict_get_or(invocation, "ability_id", "")) == false { return failure("invalid_ability_invocation_ability_id", "invocation.ability_id is invalid", {}) }
+    if valid_ability_version(dict_get_or(invocation, "ability_version", "")) == false { return failure("invalid_ability_invocation_version", "invocation.ability_version is invalid", {}) }
+    digest := dict_get_or(invocation, "definition_digest", "")
+    if digest != "" && valid_digest(digest) == false { return failure("invalid_ability_definition_digest", "invocation.definition_digest must be a sha256 hex digest", {}) }
+    if type(dict_get_or(invocation, "input", null)) == "null" { return failure("invalid_ability_invocation_input", "invocation.input is required", {}) }
+    identity_result := valid_identity(dict_get_or(invocation, "principal", null), "principal")
+    if identity_result["ok"] == false { return identity_result }
+    if valid_non_empty_string(dict_get_or(invocation, "request_id", ""), 240) == false { return failure("invalid_ability_request_id", "invocation.request_id is required", {}) }
+    if valid_non_empty_string(dict_get_or(invocation, "trace_id", ""), 240) == false { return failure("invalid_ability_trace_id", "invocation.trace_id is required", {}) }
+    if valid_non_empty_string(dict_get_or(invocation, "surface", ""), 64) == false { return failure("invalid_ability_invocation_surface", "invocation.surface is required", {}) }
+    idempotency_key := dict_get_or(invocation, "idempotency_key", "")
+    if type(idempotency_key) != "string" || len(idempotency_key) > 512 { return failure("invalid_ability_idempotency_key", "invocation.idempotency_key must be bounded text", {}) }
+    if type(dict_get_or(invocation, "approval", {})) != "dict" { return failure("invalid_ability_invocation_approval", "invocation.approval must be an object", {}) }
+    if type(dict_get_or(invocation, "metadata", {})) != "dict" { return failure("invalid_ability_invocation_metadata", "invocation.metadata must be an object", {}) }
+    return {"ok": true, "invocation": invocation}
+}
+
+export validate_ability_policy_decision := func(decision) {
+    fields := known_fields_only(decision, ["schema", "decision_id", "outcome", "reason", "requirements", "policy_id", "policy_version"], "unknown_ability_policy_decision_field", "Ability policy decision contains an unsupported field")
+    if fields["ok"] == false { return fields }
+    if dict_get_or(decision, "schema", "") != ABILITY_POLICY_DECISION_SCHEMA_ID { return failure("invalid_ability_policy_decision_schema", "decision.schema must be " + ABILITY_POLICY_DECISION_SCHEMA_ID, {}) }
+    if valid_non_empty_string(dict_get_or(decision, "decision_id", ""), 240) == false { return failure("invalid_ability_policy_decision_id", "decision.decision_id is required", {}) }
+    outcome := dict_get_or(decision, "outcome", "")
+    if outcome != "allow" && outcome != "deny" && outcome != "approval_required" { return failure("invalid_ability_policy_outcome", "decision.outcome is unsupported", {}) }
+    if valid_non_empty_string(dict_get_or(decision, "reason", ""), 1000) == false { return failure("invalid_ability_policy_reason", "decision.reason is required", {}) }
+    if type(dict_get_or(decision, "requirements", [])) != "array" { return failure("invalid_ability_policy_requirements", "decision.requirements must be an array", {}) }
+    if valid_non_empty_string(dict_get_or(decision, "policy_id", ""), 240) == false { return failure("invalid_ability_policy_id", "decision.policy_id is required", {}) }
+    if valid_ability_version(dict_get_or(decision, "policy_version", "")) == false { return failure("invalid_ability_policy_version", "decision.policy_version is invalid", {}) }
+    return {"ok": true, "decision": decision}
+}
+
+export approval_binding_digest := func(invocation) {
+    principal := dict_get_or(invocation, "principal", {})
+    binding := {
+        "ability_id": dict_get_or(invocation, "ability_id", ""),
+        "ability_version": dict_get_or(invocation, "ability_version", ""),
+        "definition_digest": dict_get_or(invocation, "definition_digest", ""),
+        "input_digest": json_digest(dict_get_or(invocation, "input", null)),
+        "principal_digest": json_digest(principal),
+        "tenant_id": dict_get_or(principal, "tenant_id", ""),
+        "invocation_id": dict_get_or(invocation, "invocation_id", "")
+    }
+    return json_digest(binding)
+}
+
+export validate_ability_approval := func(approval, invocation, now_ms) {
+    fields := known_fields_only(approval, ["schema", "approval_id", "binding_digest", "approved_by", "issued_at_ms", "expires_at_ms", "nonce", "evidence"], "unknown_ability_approval_field", "Ability approval contains an unsupported field")
+    if fields["ok"] == false { return fields }
+    if dict_get_or(approval, "schema", "") != ABILITY_APPROVAL_SCHEMA_ID { return failure("invalid_ability_approval_schema", "approval.schema must be " + ABILITY_APPROVAL_SCHEMA_ID, {}) }
+    if valid_non_empty_string(dict_get_or(approval, "approval_id", ""), 240) == false { return failure("invalid_ability_approval_id", "approval.approval_id is required", {}) }
+    if dict_get_or(approval, "binding_digest", "") != approval_binding_digest(invocation) { return failure("ability_approval_binding_mismatch", "Approval is not bound to this invocation", {}) }
+    identity_result := valid_identity(dict_get_or(approval, "approved_by", null), "approved_by")
+    if identity_result["ok"] == false { return identity_result }
+    issued_at_ms := dict_get_or(approval, "issued_at_ms", -1)
+    expires_at_ms := dict_get_or(approval, "expires_at_ms", -1)
+    if valid_non_negative_int(issued_at_ms) == false || valid_non_negative_int(expires_at_ms) == false || expires_at_ms <= issued_at_ms { return failure("invalid_ability_approval_window", "Approval validity window is invalid", {}) }
+    if type(now_ms) != "int" || now_ms < issued_at_ms || now_ms >= expires_at_ms { return failure("ability_approval_expired", "Approval is not valid at execution time", {}) }
+    if valid_non_empty_string(dict_get_or(approval, "nonce", ""), 240) == false { return failure("invalid_ability_approval_nonce", "approval.nonce is required", {}) }
+    if type(dict_get_or(approval, "evidence", {})) != "dict" { return failure("invalid_ability_approval_evidence", "approval.evidence must be an object", {}) }
+    return {"ok": true, "approval": approval}
+}
+
+export validate_ability_receipt := func(receipt) {
+    fields := known_fields_only(receipt, ["schema", "receipt_id", "invocation_id", "ability_id", "ability_version", "definition_digest", "handler_id", "handler_version", "status", "result", "error", "policy_decision", "approval_id", "idempotency", "request_id", "trace_id", "surface", "principal", "started_at_ms", "completed_at_ms", "duration_ms", "audit", "metadata"], "unknown_ability_receipt_field", "Ability receipt contains an unsupported field")
+    if fields["ok"] == false { return fields }
+    if dict_get_or(receipt, "schema", "") != ABILITY_RECEIPT_SCHEMA_ID { return failure("invalid_ability_receipt_schema", "receipt.schema must be " + ABILITY_RECEIPT_SCHEMA_ID, {}) }
+    for field_name in ["receipt_id", "invocation_id", "ability_id", "ability_version", "handler_id", "handler_version", "status", "request_id", "trace_id", "surface"] {
+        if valid_non_empty_string(dict_get_or(receipt, field_name, ""), 240) == false { return failure("invalid_ability_receipt", "Receipt field is required", {"field": field_name}) }
+    }
+    if valid_ability_id(receipt["ability_id"]) == false || valid_ability_version(receipt["ability_version"]) == false || valid_ability_version(receipt["handler_version"]) == false { return failure("invalid_ability_receipt_identity", "Receipt contains invalid versioned identity", {}) }
+    if valid_digest(dict_get_or(receipt, "definition_digest", "")) == false { return failure("invalid_ability_receipt_digest", "Receipt definition_digest is invalid", {}) }
+    status := receipt["status"]
+    if status != "succeeded" && status != "rejected" && status != "approval_required" && status != "failed" && status != "timed_out" && status != "cancelled" && status != "in_progress" { return failure("invalid_ability_receipt_status", "Receipt status is unsupported", {}) }
+    started_at_ms := dict_get_or(receipt, "started_at_ms", -1)
+    completed_at_ms := dict_get_or(receipt, "completed_at_ms", -1)
+    duration_ms := dict_get_or(receipt, "duration_ms", -1)
+    if valid_non_negative_int(started_at_ms) == false || valid_non_negative_int(completed_at_ms) == false || valid_non_negative_int(duration_ms) == false || completed_at_ms < started_at_ms || duration_ms != completed_at_ms - started_at_ms { return failure("invalid_ability_receipt_timing", "Receipt timing is inconsistent", {}) }
+    identity_result := valid_identity(dict_get_or(receipt, "principal", null), "principal")
+    if identity_result["ok"] == false { return identity_result }
+    if type(dict_get_or(receipt, "policy_decision", {})) != "dict" || type(dict_get_or(receipt, "idempotency", {})) != "dict" || type(dict_get_or(receipt, "audit", {})) != "dict" || type(dict_get_or(receipt, "metadata", {})) != "dict" { return failure("invalid_ability_receipt_metadata", "Receipt metadata fields must be objects", {}) }
+    return {"ok": true, "receipt": receipt}
+}

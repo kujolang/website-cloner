@@ -1,0 +1,15 @@
+from src.contract import validate_ability_definition, validate_ability_value
+
+definition := parse_json(read_file("examples/content_find.json"))
+schema := parse_json(read_file("schema/ability.schema.json"))
+
+assert(validate_ability_definition(definition)["ok"], "example must satisfy the Kujo validator")
+assert(json_schema_validate(definition, schema)["valid"], "example must satisfy the canonical JSON Schema")
+assert(validate_ability_value({"query": "ability"}, definition["input_schema"], "input")["ok"], "valid input must pass")
+assert(validate_ability_value({"query": 7}, definition["input_schema"], "input")["ok"] == false, "invalid input must fail")
+
+invalid := parse_json(to_json(definition))
+invalid["idempotency"] := {"mode": "retry-all"}
+assert(validate_ability_definition(invalid)["code"] == "invalid_ability_idempotency_mode", "unknown idempotency mode must fail")
+
+print("ability contract tests: all assertions passed")

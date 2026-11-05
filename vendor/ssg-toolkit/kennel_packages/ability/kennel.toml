@@ -1,0 +1,46 @@
+[package]
+name = "ability"
+version = "1.0.1"
+description = "Portable semantic operation contracts for the Kujo ecosystem."
+license = "MIT"
+authors = ["Kujolang <contact@kujolang.ai>"]
+homepage = "https://github.com/kujolang/ability"
+repository = "https://github.com/kujolang/ability"
+documentation = "https://github.com/kujolang/ability/blob/main/README.md"
+keywords = ["kujo", "ability", "contracts", "agents", "mcp"]
+categories = ["ai", "developer-tools"]
+readme = "README.md"
+
+[package.status]
+stage = "production"
+stability = "stable"
+public_api = true
+notes = "Stable v1 portable definition, execution contracts, exact registry, fail-closed runtime, and conformance gates."
+
+[kujo]
+minimum_version = "1.2.0"
+entry = "src/index.kujo"
+sources = ["src", "."]
+includes = ["README.md", "CHANGELOG.md", "SECURITY.md", "SUPPORT.md", "docs", "schema", "tests", "examples", "scripts", "fence.toml"]
+excludes = [".git", "kennel_packages", "dist", "build", "node_modules"]
+
+[build]
+command = ""
+output = "dist"
+artifacts = []
+
+[dependencies]
+
+[dev-dependencies]
+
+[scripts]
+test = "bash tests/run_tests.sh"
+verify = "bash scripts/verify-release.sh"
+
+[package.exports]
+ability = "ability.kujo"
+index = "src/index.kujo"
+contract = "src/contract.kujo"
+contracts = "src/contracts.kujo"
+registry = "src/registry.kujo"
+runtime = "src/runtime.kujo"

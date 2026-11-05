@@ -1,0 +1,899 @@
+{
+  "release": "SSG 1.2.0",
+  "date": "2026-10-12",
+  "github": {
+    "id": 411003594,
+    "tag_name": "v1.2.0",
+    "html_url": "https://github.com/kujolang/ssg/releases/tag/v1.2.0",
+    "published_at": "2026-10-12T21:18:40Z"
+  },
+  "source_commit": "c948263bd77ef2c0f75a9f6524dbcff8518f8f91",
+  "commits": {
+    "site": "2df95c38cd2b572cf0db85d586d34e7defef0046",
+    "docs": "f258705ecf908b54763fb490e6b7c27079c43af2",
+    "docs-pages": "0354de72114ed04e9f0fe42e788de7eff3218215",
+    "mcp": "d6e0073bfe0f6db2ec4b740e6e39e6c3a7f92f85",
+    "framework": "427a8b9ecfaee97cd66c6b35137bd1dc5fb16b54"
+  },
+  "release_gate": {
+    "result": "passed",
+    "wall_seconds": 2649.39,
+    "runtime": "Kujo 1.5.0 VM",
+    "log": "tmp/release-1.2.0/release-gate.log",
+    "frozen_variants": 6
+  },
+  "site_baseline": {
+    "commit": "69847c1d11629bb08e0436f655fef478cf76955b",
+    "run": 38278314259,
+    "artifact": 11759994794
+  },
+  "docs_baseline": {
+    "commit": "8c9d11e1394eb6564a816ee4dd3b98671f7cbcc0",
+    "run": 38276342505,
+    "artifact": 11759308023
+  },
+  "site_candidate_run": 38307782766,
+  "audit": {
+    "result": "passed",
+    "before": {
+      "site": {
+        "html_files": 245,
+        "sitemap_urls": 244,
+        "jsonld_errors": 0,
+        "canonical_pages": 244,
+        "missing_titles": 0,
+        "missing_descriptions": 0,
+        "h1_not_one": 1
+      },
+      "docs": {
+        "html_files": 107,
+        "sitemap_urls": 106,
+        "jsonld_errors": 0,
+        "canonical_pages": 107,
+        "missing_titles": 0,
+        "missing_descriptions": 0,
+        "h1_not_one": 1
+      }
+    },
+    "after": {
+      "site": {
+        "html_files": 245,
+        "sitemap_urls": 244,
+        "jsonld_errors": 0,
+        "canonical_pages": 244,
+        "missing_titles": 0,
+        "missing_descriptions": 0,
+        "h1_not_one": 1
+      },
+      "docs": {
+        "html_files": 107,
+        "sitemap_urls": 106,
+        "jsonld_errors": 0,
+        "canonical_pages": 107,
+        "missing_titles": 0,
+        "missing_descriptions": 0,
+        "h1_not_one": 1
+      }
+    },
+    "identical_fields": [
+      "route inventory",
+      "title",
+      "description",
+      "canonical",
+      "h1 count",
+      "social image",
+      "schema types"
+    ],
+    "changed_html": [
+      {
+        "repo": "site",
+        "file": "ecosystem/ssg/index.html"
+      },
+      {
+        "repo": "docs",
+        "file": "ecosystem/releases/index.html"
+      },
+      {
+        "repo": "docs",
+        "file": "showcases/index.html"
+      },
+      {
+        "repo": "docs",
+        "file": "showcases/ssg/index.html"
+      }
+    ]
+  },
+  "indexability": {
+    "site": {
+      "result": "passed",
+      "html_robots_compared": 245,
+      "robots_txt_identical": true,
+      "sitemap_urls_identical": true
+    },
+    "docs": {
+      "result": "passed",
+      "html_robots_compared": 107,
+      "robots_txt_identical": true,
+      "sitemap_urls_identical": true
+    }
+  },
+  "host_probes": [
+    {
+      "url": "http://www.kujolang.ai/ecosystem/ssg/?release_probe=ssg120",
+      "status": 200,
+      "final_url": "https://kujolang.ai/ecosystem/ssg/?release_probe=ssg120",
+      "redirects": 2
+    },
+    {
+      "url": "https://www.kujolang.ai/ecosystem/ssg/?release_probe=ssg120",
+      "status": 200,
+      "final_url": "https://kujolang.ai/ecosystem/ssg/?release_probe=ssg120",
+      "redirects": 1
+    },
+    {
+      "url": "https://kujolang.ai/",
+      "status": 200,
+      "final_url": "https://kujolang.ai/",
+      "redirects": 0
+    },
+    {
+      "url": "https://docs.kujolang.ai/",
+      "status": 200,
+      "final_url": "https://docs.kujolang.ai/",
+      "redirects": 0
+    },
+    {
+      "url": "https://kennel.kujolang.ai/",
+      "status": 200,
+      "final_url": "https://kennel.kujolang.ai/",
+      "redirects": 0
+    }
+  ],
+  "howl": {
+    "source_commit": "800c90fc12c114648e215e91bc946c50f1cd61b1",
+    "manifests_validated": {
+      "site": 244,
+      "docs": 1
+    },
+    "rendered": {
+      "ssg": {
+        "width": 1200,
+        "height": 630,
+        "xml_valid": true,
+        "bytes": 356807
+      },
+      "docs": {
+        "width": 1200,
+        "height": 630,
+        "xml_valid": true,
+        "bytes": 353753
+      }
+    }
+  },
+  "mcp": {
+    "result": "passed",
+    "catalog_revision": "d14ad6a486440e0baa0a74019eaa76bdabab22234cfc6d552901c50caddd73ec",
+    "catalog_content_digest": "ee9ac0adf9fd472a053b6d9bfff86ca783d57ec66ee2e863bdf923cb6ce59679",
+    "worker_sha256": "dc55760b1c44d7a09ccb35c917fb05c0883e35218260d64c286a2d6cc12199fc",
+    "items_compared": 233,
+    "installer_profiles_compared": 6,
+    "checked_at": "2026-10-12T21:20:36.545Z"
+  },
+  "worker_version_id": "15b6b524-6845-48e8-861e-ccec1713c28b",
+  "kennel": {
+    "archive_sha256": "72e19f4d83fb2530da3c53a7de73c46784bf03af34d4dffe9c801768f174f0b6",
+    "archive_size": 6179515,
+    "archive_url": "https://kennel.kujolang.ai/packages/ssg/1.2.0/package.tar.gz",
+    "checksum_url": "https://kennel.kujolang.ai/packages/ssg/1.2.0/checksums.txt",
+    "dependencies": {
+      "ability": {
+        "commit": "be093e62bc93e5ec01e99e7da16c5657507ac820",
+        "source": "github:kujolang/ability"
+      }
+    },
+    "description": "Deterministic static-site generation and Ability pack for Kujo.",
+    "file_count": 168,
+    "license": "MIT",
+    "minimum_kujo_version": "1.2.0",
+    "official": true,
+    "owner": {
+      "id": "kujolang",
+      "type": "organization"
+    },
+    "package": "ssg",
+    "provenance_sha256": "0c7b3ce42376ee4226863a2a1cceae1b49355b6b648e2bdb9f179089913f171c",
+    "provenance_url": "https://kennel.kujolang.ai/packages/ssg/1.2.0/provenance.json",
+    "release_id": 411003594,
+    "released_at": "2026-10-12T21:18:40Z",
+    "repository": "kujolang/ssg",
+    "repository_id": 1264527957,
+    "schema_version": 1,
+    "scope": null,
+    "source_commit": "c948263bd77ef2c0f75a9f6524dbcff8518f8f91",
+    "source_tag": "v1.2.0",
+    "version": "1.2.0"
+  },
+  "assets": {
+    "docs_starter_sha256": "3b9af6754e7223a7c58ef275f760d760adc8fd5bd0b8ae323cf798403974b663"
+  },
+  "unavailable_measurements": "NOT AVAILABLE \u2014 DATA ACCESS REQUIRED",
+  "scope": "Release-specific SEO and AI-discovery verification; no ranking, traffic, citation or performance improvement claim.",
+  "production_before": [
+    {
+      "url": "https://kujolang.ai/ecosystem/ssg/",
+      "status": 200,
+      "final_url": "https://kujolang.ai/ecosystem/ssg/",
+      "bytes": 20270,
+      "sha256": "4fddffe66750bbdfed89c362a253bfd85dac2e860b31574c24dbe21b0a8d4cd3",
+      "title": "SSG \u2014 Kujo Ecosystem | Kujolang.ai",
+      "description": "Deterministic static publishing for Markdown, templates, taxonomies, metadata, feeds, sitemaps, robots, llms.txt, and starter content.",
+      "canonical": "https://kujolang.ai/ecosystem/ssg/",
+      "h1_count": 1,
+      "jsonld_errors": 0,
+      "schema_types": [
+        "SoftwareSourceCode"
+      ]
+    },
+    {
+      "url": "https://docs.kujolang.ai/showcases/ssg/",
+      "status": 200,
+      "final_url": "https://docs.kujolang.ai/showcases/ssg/",
+      "bytes": 13089,
+      "sha256": "92aafef5df6261f6144e110510d9680c7f80887031312d764c8b5d5916c35042",
+      "title": "SSG | Kujo Docs",
+      "description": "Deterministic Markdown-to-site publishing with templates, feeds, sitemap, and llms.txt.",
+      "canonical": "https://docs.kujolang.ai/showcases/ssg/",
+      "h1_count": 1,
+      "jsonld_errors": 0,
+      "schema_types": [
+        "BlogPosting"
+      ]
+    },
+    {
+      "url": "https://docs.kujolang.ai/ecosystem/releases/",
+      "status": 200,
+      "final_url": "https://docs.kujolang.ai/ecosystem/releases/",
+      "bytes": 27990,
+      "sha256": "dd43fdfda347c97c6448c2ec09cba5cf2583bf7761269151c9f4d948800e19e8",
+      "title": "Ecosystem releases | Kujo Docs",
+      "description": "Current published Kujo ecosystem versions, recent source changes, and explicit installation boundaries.",
+      "canonical": "https://docs.kujolang.ai/ecosystem/releases/",
+      "h1_count": 1,
+      "jsonld_errors": 0,
+      "schema_types": [
+        "BlogPosting"
+      ]
+    },
+    {
+      "url": "https://kennel.kujolang.ai/ssg",
+      "status": 308,
+      "final_url": "https://kennel.kujolang.ai/ssg",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kennel.kujolang.ai/api/v1/packages/ssg.json",
+      "status": 200,
+      "final_url": "https://kennel.kujolang.ai/api/v1/packages/ssg.json",
+      "bytes": 645,
+      "sha256": "efa2ca5fa7330914349839c080d5dad867b92cc4f4dcf67109bab6dd063953dc",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://mcp.kujolang.ai/health",
+      "status": 200,
+      "final_url": "https://mcp.kujolang.ai/health",
+      "bytes": 216,
+      "sha256": "b4d76845e94f6ec3cef8d62e5930bac2f0a45c7f31f1ea525450cac06be6dcc3",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kujolang.ai/robots.txt",
+      "status": 200,
+      "final_url": "https://kujolang.ai/robots.txt",
+      "bytes": 65,
+      "sha256": "2abe79d705d883159eb49c1fea57184d4190cc140b99933b9b2cd51d72472b34",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kujolang.ai/sitemap.xml",
+      "status": 200,
+      "final_url": "https://kujolang.ai/sitemap.xml",
+      "bytes": 38418,
+      "sha256": "c879e8790e669610c88b4ffefa326de288b681920446c18db3c22065452e211b",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://docs.kujolang.ai/robots.txt",
+      "status": 200,
+      "final_url": "https://docs.kujolang.ai/robots.txt",
+      "bytes": 70,
+      "sha256": "bc03f00f4101abbfe4e04dff7feff244618e0bd8ec58df73e5e6d29aae84f6f9",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://docs.kujolang.ai/sitemap.xml",
+      "status": 200,
+      "final_url": "https://docs.kujolang.ai/sitemap.xml",
+      "bytes": 7204,
+      "sha256": "0f2e5c307c7e4771ef3a83a658cbbf63385e4405454bed8e85c08a9c36f1ded4",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kennel.kujolang.ai/robots.txt",
+      "status": 200,
+      "final_url": "https://kennel.kujolang.ai/robots.txt",
+      "bytes": 23,
+      "sha256": "16ceb5ee3e0dc13aa9adf31a3ebbe45a1d965b8c2b9f72eaf84e5911e140ed95",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kennel.kujolang.ai/sitemap.xml",
+      "status": 404,
+      "final_url": "https://kennel.kujolang.ai/sitemap.xml",
+      "bytes": 1629,
+      "sha256": "444a56817f34153c5ac61947e82c86e65ec4f7f73a6f5f38e852a1ffa69cd274",
+      "title": "Package not found \u00b7 Kennel",
+      "description": "Official released packages for Kujo.",
+      "canonical": "https://kennel.kujolang.ai/",
+      "h1_count": 1,
+      "jsonld_errors": 0,
+      "schema_types": []
+    }
+  ],
+  "edge_before": [
+    {
+      "kind": "crawler",
+      "url": "https://kujolang.ai/ecosystem/ssg/",
+      "agent": "Googlebot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kujolang.ai/ecosystem/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://kujolang.ai/ecosystem/ssg/",
+      "agent": "OAI-SearchBot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kujolang.ai/ecosystem/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "http",
+      "url": "http://kujolang.ai/ecosystem/ssg/?release_probe=ssg120",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kujolang.ai/ecosystem/ssg/?release_probe=ssg120",
+      "redirects": 1,
+      "error": ""
+    },
+    {
+      "kind": "404",
+      "url": "https://kujolang.ai/ssg-release-probe-does-not-exist",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 404,
+      "final": "https://kujolang.ai/ssg-release-probe-does-not-exist",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://docs.kujolang.ai/showcases/ssg/",
+      "agent": "Googlebot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://docs.kujolang.ai/showcases/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://docs.kujolang.ai/showcases/ssg/",
+      "agent": "OAI-SearchBot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://docs.kujolang.ai/showcases/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "http",
+      "url": "http://docs.kujolang.ai/showcases/ssg/?release_probe=ssg120",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 200,
+      "final": "https://docs.kujolang.ai/showcases/ssg/?release_probe=ssg120",
+      "redirects": 1,
+      "error": ""
+    },
+    {
+      "kind": "404",
+      "url": "https://docs.kujolang.ai/ssg-release-probe-does-not-exist",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 404,
+      "final": "https://docs.kujolang.ai/ssg-release-probe-does-not-exist",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://kennel.kujolang.ai/ssg/",
+      "agent": "Googlebot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kennel.kujolang.ai/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://kennel.kujolang.ai/ssg/",
+      "agent": "OAI-SearchBot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kennel.kujolang.ai/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "http",
+      "url": "http://kennel.kujolang.ai/ssg/?release_probe=ssg120",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kennel.kujolang.ai/ssg/?release_probe=ssg120",
+      "redirects": 1,
+      "error": ""
+    },
+    {
+      "kind": "404",
+      "url": "https://kennel.kujolang.ai/ssg-release-probe-does-not-exist",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 404,
+      "final": "https://kennel.kujolang.ai/ssg-release-probe-does-not-exist",
+      "redirects": 0,
+      "error": ""
+    }
+  ],
+  "production_after": [
+    {
+      "url": "https://kujolang.ai/ecosystem/ssg/",
+      "status": 200,
+      "final_url": "https://kujolang.ai/ecosystem/ssg/",
+      "bytes": 21094,
+      "sha256": "dd1f158c0e7369bbb6e38df11ba81014b4798a86ea6ac47eaa2c976d5465de9f",
+      "title": "SSG \u2014 Kujo Ecosystem | Kujolang.ai",
+      "description": "Deterministic static publishing for Markdown, templates, taxonomies, metadata, feeds, sitemaps, robots, llms.txt, and starter content.",
+      "canonical": "https://kujolang.ai/ecosystem/ssg/",
+      "h1_count": 1,
+      "jsonld_errors": 0,
+      "schema_types": [
+        "SoftwareSourceCode"
+      ]
+    },
+    {
+      "url": "https://docs.kujolang.ai/showcases/ssg/",
+      "status": 200,
+      "final_url": "https://docs.kujolang.ai/showcases/ssg/",
+      "bytes": 14853,
+      "sha256": "1757d9048ae18fc4e85e396fd6db65dc5725d5159b136cb65bbf737c8d31948b",
+      "title": "SSG | Kujo Docs",
+      "description": "Deterministic Markdown-to-site publishing with templates, feeds, sitemap, and llms.txt.",
+      "canonical": "https://docs.kujolang.ai/showcases/ssg/",
+      "h1_count": 1,
+      "jsonld_errors": 0,
+      "schema_types": [
+        "BlogPosting"
+      ]
+    },
+    {
+      "url": "https://docs.kujolang.ai/ecosystem/releases/",
+      "status": 200,
+      "final_url": "https://docs.kujolang.ai/ecosystem/releases/",
+      "bytes": 28244,
+      "sha256": "f2cef96847840dd4fafddf39c290ebc4524ac6b9e4cf24503a0153334ddadb08",
+      "title": "Ecosystem releases | Kujo Docs",
+      "description": "Current published Kujo ecosystem versions, recent source changes, and explicit installation boundaries.",
+      "canonical": "https://docs.kujolang.ai/ecosystem/releases/",
+      "h1_count": 1,
+      "jsonld_errors": 0,
+      "schema_types": [
+        "BlogPosting"
+      ]
+    },
+    {
+      "url": "https://kennel.kujolang.ai/ssg",
+      "status": 308,
+      "final_url": "https://kennel.kujolang.ai/ssg",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kennel.kujolang.ai/api/v1/packages/ssg.json",
+      "status": 200,
+      "final_url": "https://kennel.kujolang.ai/api/v1/packages/ssg.json",
+      "bytes": 839,
+      "sha256": "d58fcf4a3feccc2518a779b7f7fdfe40072df53959dd4d23a4f306f201dd3398",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://mcp.kujolang.ai/health",
+      "status": 200,
+      "final_url": "https://mcp.kujolang.ai/health",
+      "bytes": 216,
+      "sha256": "2ba2d927f75e76ff412c962cbb8d2480d8a4e66ec6cf87d1005ded58285f88dd",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kujolang.ai/robots.txt",
+      "status": 200,
+      "final_url": "https://kujolang.ai/robots.txt",
+      "bytes": 65,
+      "sha256": "2abe79d705d883159eb49c1fea57184d4190cc140b99933b9b2cd51d72472b34",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kujolang.ai/sitemap.xml",
+      "status": 200,
+      "final_url": "https://kujolang.ai/sitemap.xml",
+      "bytes": 38418,
+      "sha256": "c879e8790e669610c88b4ffefa326de288b681920446c18db3c22065452e211b",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://docs.kujolang.ai/robots.txt",
+      "status": 200,
+      "final_url": "https://docs.kujolang.ai/robots.txt",
+      "bytes": 70,
+      "sha256": "bc03f00f4101abbfe4e04dff7feff244618e0bd8ec58df73e5e6d29aae84f6f9",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://docs.kujolang.ai/sitemap.xml",
+      "status": 200,
+      "final_url": "https://docs.kujolang.ai/sitemap.xml",
+      "bytes": 7204,
+      "sha256": "0f2e5c307c7e4771ef3a83a658cbbf63385e4405454bed8e85c08a9c36f1ded4",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kennel.kujolang.ai/robots.txt",
+      "status": 200,
+      "final_url": "https://kennel.kujolang.ai/robots.txt",
+      "bytes": 23,
+      "sha256": "16ceb5ee3e0dc13aa9adf31a3ebbe45a1d965b8c2b9f72eaf84e5911e140ed95",
+      "title": "",
+      "description": "",
+      "canonical": "",
+      "h1_count": 0,
+      "jsonld_errors": 0,
+      "schema_types": []
+    },
+    {
+      "url": "https://kennel.kujolang.ai/sitemap.xml",
+      "status": 404,
+      "final_url": "https://kennel.kujolang.ai/sitemap.xml",
+      "bytes": 1629,
+      "sha256": "444a56817f34153c5ac61947e82c86e65ec4f7f73a6f5f38e852a1ffa69cd274",
+      "title": "Package not found \u00b7 Kennel",
+      "description": "Official released packages for Kujo.",
+      "canonical": "https://kennel.kujolang.ai/",
+      "h1_count": 1,
+      "jsonld_errors": 0,
+      "schema_types": []
+    }
+  ],
+  "edge_after": [
+    {
+      "kind": "crawler",
+      "url": "https://kujolang.ai/ecosystem/ssg/",
+      "agent": "Googlebot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kujolang.ai/ecosystem/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://kujolang.ai/ecosystem/ssg/",
+      "agent": "OAI-SearchBot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kujolang.ai/ecosystem/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "http",
+      "url": "http://kujolang.ai/ecosystem/ssg/?release_probe=ssg120",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kujolang.ai/ecosystem/ssg/?release_probe=ssg120",
+      "redirects": 1,
+      "error": ""
+    },
+    {
+      "kind": "404",
+      "url": "https://kujolang.ai/ssg-release-probe-does-not-exist",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 404,
+      "final": "https://kujolang.ai/ssg-release-probe-does-not-exist",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://docs.kujolang.ai/showcases/ssg/",
+      "agent": "Googlebot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://docs.kujolang.ai/showcases/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://docs.kujolang.ai/showcases/ssg/",
+      "agent": "OAI-SearchBot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://docs.kujolang.ai/showcases/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "http",
+      "url": "http://docs.kujolang.ai/showcases/ssg/?release_probe=ssg120",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 200,
+      "final": "https://docs.kujolang.ai/showcases/ssg/?release_probe=ssg120",
+      "redirects": 1,
+      "error": ""
+    },
+    {
+      "kind": "404",
+      "url": "https://docs.kujolang.ai/ssg-release-probe-does-not-exist",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 404,
+      "final": "https://docs.kujolang.ai/ssg-release-probe-does-not-exist",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://kennel.kujolang.ai/ssg/",
+      "agent": "Googlebot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kennel.kujolang.ai/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "crawler",
+      "url": "https://kennel.kujolang.ai/ssg/",
+      "agent": "OAI-SearchBot",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kennel.kujolang.ai/ssg/",
+      "redirects": 0,
+      "error": ""
+    },
+    {
+      "kind": "http",
+      "url": "http://kennel.kujolang.ai/ssg/?release_probe=ssg120",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 200,
+      "final": "https://kennel.kujolang.ai/ssg/?release_probe=ssg120",
+      "redirects": 1,
+      "error": ""
+    },
+    {
+      "kind": "404",
+      "url": "https://kennel.kujolang.ai/ssg-release-probe-does-not-exist",
+      "agent": "KujoReleaseCheck/1.0",
+      "exit": 0,
+      "status": 404,
+      "final": "https://kennel.kujolang.ai/ssg-release-probe-does-not-exist",
+      "redirects": 0,
+      "error": ""
+    }
+  ],
+  "workflows": [
+    {
+      "repository": "kujolang/ssg",
+      "id": 38309817329,
+      "name": "CI",
+      "head_sha": "c948263bd77ef2c0f75a9f6524dbcff8518f8f91",
+      "head_branch": "main",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/kujolang/ssg/actions/runs/38309817329",
+      "created_at": "2026-10-12T21:18:39Z",
+      "updated_at": "2026-10-12T21:38:25Z"
+    },
+    {
+      "repository": "kujolang/ssg",
+      "id": 38309818086,
+      "name": "CI",
+      "head_sha": "c948263bd77ef2c0f75a9f6524dbcff8518f8f91",
+      "head_branch": "v1.2.0",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/kujolang/ssg/actions/runs/38309818086",
+      "created_at": "2026-10-12T21:18:39Z",
+      "updated_at": "2026-10-12T21:38:23Z"
+    },
+    {
+      "repository": "kujolang/kujolang.ai",
+      "id": 38307782766,
+      "name": "Deploy GitHub Pages",
+      "head_sha": "2df95c38cd2b572cf0db85d586d34e7defef0046",
+      "head_branch": "release/ssg-1.2.0",
+      "event": "workflow_dispatch",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/kujolang/kujolang.ai/actions/runs/38307782766",
+      "created_at": "2026-10-12T20:59:36Z",
+      "updated_at": "2026-10-12T21:08:08Z"
+    },
+    {
+      "repository": "kujolang/kujolang.ai",
+      "id": 38309854704,
+      "name": "Deploy GitHub Pages",
+      "head_sha": "2df95c38cd2b572cf0db85d586d34e7defef0046",
+      "head_branch": "main",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/kujolang/kujolang.ai/actions/runs/38309854704",
+      "created_at": "2026-10-12T21:19:01Z",
+      "updated_at": "2026-10-12T21:27:55Z"
+    },
+    {
+      "repository": "kujolang/docs.kujolang.ai",
+      "id": 38309858607,
+      "name": "Verify documentation site",
+      "head_sha": "f258705ecf908b54763fb490e6b7c27079c43af2",
+      "head_branch": "main",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/kujolang/docs.kujolang.ai/actions/runs/38309858607",
+      "created_at": "2026-10-12T21:19:03Z",
+      "updated_at": "2026-10-12T21:22:48Z"
+    },
+    {
+      "repository": "kujolang/docs.kujolang.ai",
+      "id": 38309863839,
+      "name": "pages build and deployment",
+      "head_sha": "0354de72114ed04e9f0fe42e788de7eff3218215",
+      "head_branch": "gh-pages",
+      "event": "dynamic",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/kujolang/docs.kujolang.ai/actions/runs/38309863839",
+      "created_at": "2026-10-12T21:19:06Z",
+      "updated_at": "2026-10-12T21:19:50Z"
+    },
+    {
+      "repository": "kujolang/kujolang-mcp",
+      "id": 38309867765,
+      "name": "Validate and deploy Kujo MCP",
+      "head_sha": "d6e0073bfe0f6db2ec4b740e6e39e6c3a7f92f85",
+      "head_branch": "main",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/kujolang/kujolang-mcp/actions/runs/38309867765",
+      "created_at": "2026-10-12T21:19:08Z",
+      "updated_at": "2026-10-12T21:19:29Z"
+    },
+    {
+      "repository": "kujolang/kennel-registry",
+      "id": 38309869212,
+      "name": "Reconcile official GitHub Releases",
+      "head_sha": "4f2bede9a38681714487c971934d4fbc2c2e3a33",
+      "head_branch": "main",
+      "event": "workflow_dispatch",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/kujolang/kennel-registry/actions/runs/38309869212",
+      "created_at": "2026-10-12T21:19:09Z",
+      "updated_at": "2026-10-12T21:20:26Z"
+    }
+  ]
+}

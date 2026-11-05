@@ -1,0 +1,14 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.ssg.content.validate",
+  "version": "1.0.0",
+  "description": "Validate bounded source content files before a build.",
+  "input_schema": { "type": "object", "properties": {}, "additionalProperties": false },
+  "output_schema": {
+    "type": "object", "required": ["operation", "scanned", "error_count", "details"],
+    "properties": { "operation": { "type": "string" }, "scanned": { "type": "integer", "minimum": 0 }, "error_count": { "type": "integer", "minimum": 0 }, "details": { "type": "array", "maxItems": 200, "items": { "type": "string" } } },
+    "additionalProperties": false
+  },
+  "effects": [{ "kind": "read", "resource": "kujo.ssg.source-content" }],
+  "idempotency": { "mode": "intrinsic" }
+}

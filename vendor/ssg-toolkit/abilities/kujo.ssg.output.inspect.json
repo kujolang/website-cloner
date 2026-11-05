@@ -1,0 +1,14 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.ssg.output.inspect",
+  "version": "1.0.0",
+  "description": "Inspect generated routes, links, metadata, and auxiliary discovery artifacts.",
+  "input_schema": { "type": "object", "required": ["output"], "properties": { "output": { "type": "string", "minLength": 1, "maxLength": 1024 } }, "additionalProperties": false },
+  "output_schema": {
+    "type": "object", "required": ["operation", "file_count", "route_count", "broken_link_count", "metadata_error_count", "aux", "details"],
+    "properties": { "operation": { "type": "string" }, "file_count": { "type": "integer", "minimum": 0 }, "route_count": { "type": "integer", "minimum": 0 }, "broken_link_count": { "type": "integer", "minimum": 0 }, "metadata_error_count": { "type": "integer", "minimum": 0 }, "aux": { "type": "object" }, "details": { "type": "array", "maxItems": 200, "items": { "type": "string" } } },
+    "additionalProperties": false
+  },
+  "effects": [{ "kind": "read", "resource": "kujo.ssg.generated-output" }],
+  "idempotency": { "mode": "intrinsic" }
+}

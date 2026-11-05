@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';import {mkdtemp,cp,readFile,writeFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import path from 'node:path';import {load} from 'cheerio';import {chromium} from 'playwright';
+import {run} from '../../engine/pipeline.mjs';import {parseContent,YAML} from '../../scripts/source-project.mjs';
+const source=path.resolve(process.argv[2]||'artifacts/platform/wpforms/project'),original=await readFile(path.join(source,'forms.json'),'utf8'),dir=await mkdtemp(path.join(tmpdir(),'wpforms-authoring-'));
+try{
+ await cp(source,dir,{recursive:true,filter:entry=>!['output','.ssg-output','.ssg-content','.ssg-templates'].includes(path.basename(entry))});
+ const config=JSON.parse(original),form=config.forms.find(f=>f.provider==='wpforms'&&f.fields.some(field=>field.matchesFieldIndex!==undefined));assert.ok(form);
+ const confirm=form.fields.find(f=>f.matchesFieldIndex!==undefined),primary=form.fields.find(f=>f.sourceIndex===confirm.matchesFieldIndex);primary.name='reply_to';primary.label='Reply address';
+ for(const field of form.fields.filter(f=>f.type==='select'))field.options.push({value:'East',label:'East'});form.delivery={endpoint:'/delivery',format:'multipart'};
+ await writeFile(path.join(dir,'forms.json'),JSON.stringify(config));
+ const route=form.route;assert.match(route,/^\/[a-z0-9-]+\/$/);const file=path.join(dir,'content/pages',route.slice(1,-1)+'.md'),parsed=parseContent(await readFile(file,'utf8'),file);parsed.meta.title='Edited request';parsed.body='Edited request introduction.\n\n'+parsed.body;await writeFile(file,'---\n'+YAML.stringify(parsed.meta)+'---\n'+parsed.body);
+ await run(process.execPath,['scripts/build.mjs'],{cwd:dir,timeout:120000});const html=await readFile(path.join(dir,'output',route.slice(1),'index.html'),'utf8'),$=load(html);assert.equal($('h1').text().trim(),'Edited request');assert.match($('main').text(),/Edited request introduction/);assert.equal($('[name=reply_to]').length,1);assert.ok($('label').toArray().some(e=>$(e).text()==='Reply address'));assert.equal($('option[value=East]').length,form.fields.filter(f=>f.type==='select').length);
+ const browser=await chromium.launch({channel:'chrome'});try{
+  const tab=await browser.newPage();let posts=0;await tab.route('**/*',async route=>{if(route.request().url()==='https://fixture.test/delivery'){posts++;assert.match(route.request().postData(),/name="reply_to"/);assert.doesNotMatch(route.request().postData(),/nonce|wpforms\[token\]/);await route.fulfill({contentType:'application/json',body:'{"ok":true}'});}else if(route.request().url()==='https://fixture.test'+form.route)await route.fulfill({contentType:'text/html',body:html});else await route.abort();});
+  await tab.goto('https://fixture.test'+form.route);const control=f=>tab.locator('form.wpforms-form [data-migration-field-index="'+f.sourceIndex+'"]'),valid=()=>tab.locator('form.wpforms-form').evaluate(f=>f.checkValidity());
+  for(const f of form.fields){if(f.type==='text')await control(f).fill('Fixture');if(f.type==='email')await control(f).fill('fixture@example.test');if(f.type==='textarea')await control(f).fill('Fixture request');if(f.type==='select')await control(f).selectOption('East',{force:true});}
+  assert.equal(await valid(),false);await control(form.fields.find(f=>f.requiredGroup||(f.type==='radio'&&f.required))).check();assert.equal(await valid(),true);await control(primary).fill('changed@example.test');assert.equal(await valid(),false);await control(confirm).fill('changed@example.test');assert.equal(await valid(),true);
+  await tab.locator('form.wpforms-form button[type=submit]').click();await tab.waitForFunction(()=>document.querySelector('form.wpforms-form [role=status]')?.textContent.includes('accepted'));assert.equal(posts,1);
+ }finally{await browser.close();}
+ assert.equal(await readFile(path.join(source,'forms.json'),'utf8'),original);console.log(JSON.stringify({status:'passed',markdownAndFrontmatter:true,editedLabel:true,renamedConfirmationTarget:true,addedOption:true,interceptedDelivery:true,sourceMutated:false,sourceSubmissions:0,aiCalls:0}));
+}finally{await rm(dir,{recursive:true,force:true});}

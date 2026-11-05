@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>WEBSITE CLONER — Your website. Your next move.</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/client.js" defer></script>
+    <script src="/hero-dither.js" defer></script>
+    <script src="/builds.js" defer></script>
+    <script src="/hosting.js" defer></script>
+    <script src="/compatibility.js" defer></script>
+  </head>
+  <body class="is-home">
+    <div class="home-hero__media" aria-hidden="true"><img src="/brand/home-agent-workflow.webp" alt="" width="1672" height="941"></div>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="masthead">
+      <a class="brand" href="/" aria-label="WEBSITE CLONER home"><img src="/brand/kujo-logomark.svg" alt="" width="32" height="32"> WEBSITE CLONER</a>
+      <a class="ecosystem-link" href="https://kujolang.ai/" target="_blank" rel="noopener">KUJO ECOSYSTEM <img class="ui-icon" src="/icons/arrow-up-right.svg" alt=""></a>
+    </header>
+    <main id="main">
+      <section id="submit" class="hero">
+        <div class="hero-copy">
+        <h1>Your website.<br /><em>Your next move.</em></h1>
+        </div>
+        <div class="hero-form">
+        <form id="start">
+          <label for="url">Your website address</label>
+          <div class="url-row">
+            <input
+              type="url"
+              id="url"
+              name="url"
+              placeholder="https://your-website.com"
+              required
+              autocomplete="url"
+            /><button type="submit">CLONE <img class="ui-icon" src="/icons/arrow-up-right.svg" alt=""></button>
+          </div>
+          <div class="migration-options">
+            <label for="model">Design review model</label>
+            <select id="model"><option value="" selected>Preserve Source Without AI</option></select>
+            <label for="transport">Capture method</label>
+            <select id="transport"><option value="http">Standard capture</option><option value="browser">Browser-assisted capture</option></select>
+          </div>
+        </form>
+        <p id="error" role="alert"></p>
+        <button id="resume" type="button" hidden>Resume saved migration</button>
+        <button id="resume-browser" type="button" hidden>Resume with browser capture</button>
+        </div>
+        <div class="steps">
+          <div>
+            <b>01 / <img class="ui-icon" src="/icons/search.svg" alt=""></b>
+            <h2>Bring your website</h2>
+            <p>Just paste its address.</p>
+          </div>
+          <div>
+            <b>02 / <img class="ui-icon" src="/icons/device-desktop.svg" alt=""></b>
+            <h2>Make sure it feels right</h2>
+            <p>Preview it and review the details.</p>
+          </div>
+          <div>
+            <b>03 / <img class="ui-icon" src="/icons/download.svg" alt=""></b>
+            <h2>Take it anywhere</h2>
+            <p>Download it. Host it your way.</p>
+          </div>
+        </div>
+      </section>
+      <section id="progress" hidden>
+        <div class="eyebrow">Your website is on its way</div>
+        <h1>Building your<br /><em>next chapter.</em></h1>
+        <p class="lead" id="stage" aria-live="polite">Inspecting website</p>
+        <div class="running-status"><img class="ui-icon spinner" src="/icons/loader-2.svg" alt=""><span id="activity-status">Running</span><button id="stop" class="secondary" type="button"><img class="ui-icon" src="/icons/player-stop.svg" alt="">Stop migration</button></div>
+        <button id="browser-continue" class="secondary" type="button" hidden>Continue browser capture</button>
+        <p id="browser-help" class="fine" hidden>Review the separate source browser window and handle any site prompts yourself. Continue when the public page is ready. Source forms and purchases are blocked; session data stays out of your export.</p>
+        <p id="stop-error" role="alert" hidden></p>
+        <div class="progress-track" role="progressbar" aria-label="Migration running" aria-valuetext="Working; total duration is not yet known"><span></span></div>
+        <p id="heartbeat" class="fine" aria-live="off">Waiting for the next update…</p>
+        <p id="migration-time" class="fine migration-time" role="status" hidden></p>
+        <p id="transfer-status" class="fine" role="status" hidden></p>
+        <ol id="events"></ol>
+        <p class="fine">You can refresh this page. We’ll keep your place.</p>
+      </section>
+      <section id="ai-usage" hidden aria-label="AI token usage">
+        <h2>AI token usage</h2>
+        <p id="usage-summary"></p>
+        <details><summary>Usage by AI round</summary>
+          <div class="table-scroll"><table><thead><tr><th>Round</th><th>Stage / model</th><th>Status</th><th>Input</th><th>Output</th><th>Cached input</th><th>Total</th></tr></thead><tbody id="usage-rounds"></tbody></table></div>
+        </details>
+        <p class="fine">Cached tokens are included in input, not added to total. Unreported usage stays unknown. Full token details are in ai-usage.json in your download. Applying API prices gives a comparison estimate, not a ChatGPT subscription charge.</p>
+      </section>
+      <section id="result" hidden>
+        <div class="result-heading">
+          <div>
+            <h1 id="result-title">Your migration preview</h1>
+          </div>
+          <div class="result-actions"><button id="rebuild" type="button"><img class="ui-icon" src="/icons/refresh.svg" alt=""> REBUILD</button>
+          <a id="download" class="button" href="#"><img class="ui-icon" src="/icons/download.svg" alt=""> DOWNLOAD ZIP</a></div>
+        </div>
+        <div class="build-metrics"><div id="summary" class="summary"></div><div id="result-timing"></div></div>
+        <div class="preview-toolbar">
+          <p id="agent-summary"></p>
+          <div>
+            <button id="desktop" class="secondary"><img class="ui-icon" src="/icons/device-desktop.svg" alt=""> Desktop</button
+            ><button id="mobile" class="secondary"><img class="ui-icon" src="/icons/device-mobile.svg" alt=""> Mobile</button
+            ><a id="open-preview" target="_blank" rel="noopener"
+              >Open preview <img class="ui-icon" src="/icons/arrow-up-right.svg" alt=""></a
+            >
+          </div>
+        </div>
+        <div class="frame-wrap">
+          <iframe
+            id="preview"
+            title="Rebuilt website preview"
+            sandbox="allow-same-origin allow-scripts"
+          ></iframe>
+        </div>
+        <details>
+          <summary>Original & rebuilt comparison</summary>
+          <div class="compare">
+            <figure>
+              <figcaption>Original</figcaption>
+              <img id="original-shot" alt="Original desktop capture" />
+            </figure>
+            <figure>
+              <figcaption>Rebuilt</figcaption>
+              <img id="rebuilt-shot" alt="Rebuilt desktop capture" />
+            </figure>
+          </div>
+        </details>
+        <details>
+          <summary>What needs a closer look</summary>
+          <div id="findings"></div>
+        </details>
+        <details id="compatibility-panel">
+          <summary>Plugin compatibility &amp; forms</summary>
+          <div class="compatibility-body">
+            <p id="compatibility-status" role="status">Select a completed build to see its compatibility report.</p>
+            <p class="fine">Detection does not mean full support. Configured forms still need a working delivery service.</p>
+            <div id="compatibility-plugins"></div>
+            <div id="compatibility-components"></div>
+            <div id="compatibility-seo"></div>
+            <div id="compatibility-forms"></div>
+            <button id="compatibility-rebuild" type="button" class="secondary" hidden><img class="ui-icon" src="/icons/refresh.svg" alt="">Apply settings &amp; rebuild from cache</button>
+          </div>
+        </details>
+        <section class="export">
+          <h2>Take it anywhere.</h2>
+          <p>
+            Your download includes the finished website and editable source
+            files.
+          </p>
+          <div class="destinations">
+            <button class="secondary" data-provider="github" aria-controls="deployment" aria-expanded="false">
+              <img class="ui-icon" src="/icons/brand-github.svg" alt=""> GitHub Pages</button
+            ><button class="secondary" data-provider="cloudflare" aria-controls="deployment" aria-expanded="false">
+              <img class="ui-icon" src="/icons/cloud-upload.svg" alt=""> Cloudflare Pages</button
+            ><a id="other-download">Other hosting · Download files</a>
+          </div>
+          <section id="deployment" class="hosting-panel" aria-labelledby="hosting-title" hidden>
+            <div class="hosting-heading"><h3 id="hosting-title"></h3><span id="hosting-status" class="hosting-status">Connect account</span></div>
+            <p id="hosting-error" role="alert" hidden></p>
+            <form id="hosting-connect" class="hosting-form">
+              <label for="hosting-token">Your API token</label>
+              <input id="hosting-token" type="password" required autocomplete="off" spellcheck="false" maxlength="2048">
+              <p id="hosting-token-help" class="fine"></p>
+              <div class="hosting-actions"><button type="submit">Connect account</button><a id="hosting-token-guide" target="_blank" rel="noopener">Create a token <img class="ui-icon" src="/icons/arrow-up-right.svg" alt=""></a></div>
+              <p class="fine">Your token stays in this server’s memory until you disconnect or restart. It is never included in a download.</p>
+            </form>
+            <div id="hosting-connected" hidden>
+              <div class="hosting-account"><p id="hosting-identity"></p><button id="hosting-disconnect" type="button" class="secondary">Disconnect</button></div>
+              <div id="hosting-account-field" hidden><label for="hosting-account">Cloudflare account</label><select id="hosting-account"></select></div>
+              <label for="hosting-site">Publish destination</label><select id="hosting-site"></select>
+              <p id="hosting-site-help" class="fine"></p>
+              <details class="hosting-create"><summary>Create a new site</summary><form id="hosting-create" class="hosting-form"><label for="hosting-name">Site name</label><input id="hosting-name" required maxlength="100" placeholder="my-website"><p id="hosting-create-help" class="fine"></p><button type="submit" class="secondary">Create site</button></form></details>
+              <p id="hosting-quality" class="hosting-note"></p>
+              <label class="hosting-consent"><input id="hosting-confirm" type="checkbox">Publish this site publicly to the selected destination, replacing its current Pages website.</label>
+              <button id="hosting-publish" type="button"><img class="ui-icon" src="/icons/cloud-upload.svg" alt="">Publish website</button>
+            </div>
+            <section id="hosting-progress" class="hosting-progress" aria-label="Deployment progress" hidden>
+              <p id="hosting-stage" role="status"></p><div class="progress-track" aria-label="Publishing in progress" role="progressbar"><span></span></div>
+              <ol id="hosting-events"></ol><p id="hosting-result"></p>
+            </section>
+            <div id="hosting-history" class="hosting-history" aria-label="Recent deployments"></div>
+          </section>
+        </section>
+        <aside id="help">
+          <h2>Want help taking your website further?</h2>
+          <p>
+            We can help with custom design, advanced features, and business
+            integrations. Completely optional.
+          </p>
+          <a id="consult" hidden>Let’s talk <img class="ui-icon" src="/icons/arrow-up-right.svg" alt=""></a>
+          <p id="consult-unconfigured" class="fine">
+            Consultation booking is not configured in this local prototype.
+          </p>
+          <label class="consent"
+            ><input type="checkbox" id="include-findings" /> Include the
+            migration summary when I request a consultation.</label
+          >
+        </aside>
+        <a class="again" href="/">Rebuild another website <img class="ui-icon" src="/icons/refresh.svg" alt=""></a>
+      </section>
+      <section id="build-history" aria-labelledby="build-history-title">
+        <div class="result-heading"><h2 id="build-history-title">Saved builds</h2><button id="refresh-builds" class="secondary" type="button"><img class="ui-icon" src="/icons/refresh.svg" alt=""> Refresh</button></div>
+        <p id="build-storage" class="fine"></p>
+        <p id="build-message" role="status" aria-live="polite">Loading saved builds…</p>
+        <div id="build-list"></div>
+        <a class="again" href="/">Start another migration <img class="ui-icon" src="/icons/arrow-up-right.svg" alt=""></a>
+      </section>
+    </main>
+    <footer>
+      <a class="footer-kujo" href="https://kujolang.ai/" target="_blank" rel="noopener"><img src="/brand/kujo-logomark.svg" width="24" height="24" alt=""> KUJO</a>
+      <span class="footer-credit">WEBSITE CLONER / LOCAL EDITION · <a href="https://RobertDeVore.com/" target="_blank" rel="noopener">RobertDeVore.com</a></span>
+    </footer>
+  </body>
+</html>

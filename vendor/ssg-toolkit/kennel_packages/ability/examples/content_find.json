@@ -1,0 +1,11 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.docs.content.find",
+  "version": "1.0.0",
+  "title": "Find documentation",
+  "description": "Find a bounded set of documentation records.",
+  "input_schema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string", "minLength": 1}}, "additionalProperties": false},
+  "output_schema": {"type": "object", "required": ["count"], "properties": {"count": {"type": "integer", "minimum": 0}}, "additionalProperties": false},
+  "effects": [{"kind": "read", "resource": "kujo.docs.content"}],
+  "idempotency": {"mode": "intrinsic"}
+}

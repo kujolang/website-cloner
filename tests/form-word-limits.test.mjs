@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {chromium} from 'playwright';
+import {load} from 'cheerio';
+import {extract} from '../engine/extract.mjs';
+import {applyForms} from '../scripts/form-export.mjs';
+const html='<main><div class="wpforms-container"><form><label>Note<textarea name="note" class="wpforms-limit-words-enabled" data-text-limit="12"></textarea></label><button type="reset">Reset</button></form></div></main>';
+function configured(){const model=extract(html,'https://fixture.test/'),contract=model.sourceForms[0],$=load(model.content);contract.delivery={endpoint:'/send'};contract.fields[0].maxWords=2;applyForms($,model,[contract]);return {$,model,contract};}
+test('word limits are captured, editable and removable without inferring generic data attributes',()=>{
+ assert.equal(extract(html,'https://fixture.test/').sourceForms[0].fields[0].maxWords,12);
+ assert.equal(extract(html.replace('wpforms-container','other'),'https://fixture.test/').sourceForms[0].fields[0].maxWords,undefined);
+ const {$,model,contract}=configured();assert.equal($('textarea').attr('data-cloner-max-words'),'2');delete contract.fields[0].maxWords;applyForms($,model,[contract]);assert.equal($('textarea').attr('data-cloner-max-words'),undefined);
+});
+test('word limit validates whitespace, comma boundaries, edits, disabled fields and reset',async()=>{
+ const browser=await chromium.launch({channel:'chrome'});try{for(const width of [1440,390]){const page=await browser.newPage({viewport:{width,height:844}});await page.setContent(configured().$.html());await page.addScriptTag({content:await readFile('scripts/component-forms.js','utf8')});const field=page.locator('textarea'),valid=()=>field.evaluate(e=>e.checkValidity());
+ for(const [value,expected] of [['',true],[' one\n two ',true],['one two three',false],['one,two three',false],['one,2 three',false],['1,000 two',true],['こんにちは 世界',true]]){await field.fill(value);assert.equal(await valid(),expected,value);}
+ await field.fill('one two three');await field.evaluate(e=>{e.disabled=true;e.dispatchEvent(new Event('change',{bubbles:true}));});assert.equal(await field.evaluate(e=>e.validity.customError),false);await field.evaluate(e=>{e.disabled=false;e.dispatchEvent(new Event('change',{bubbles:true}));});assert.equal(await valid(),false);await page.getByRole('button',{name:'Reset'}).click();await page.waitForFunction(()=>document.querySelector('textarea').validity.valid);await page.close();}}finally{await browser.close();}
+});
+test('restricted input limits separators and paste while preserving selected replacement and IME',async()=>{const browser=await chromium.launch({channel:'chrome'});try{const page=await browser.newPage();await page.setContent(configured().$.html());await page.addScriptTag({content:await readFile('scripts/component-forms.js','utf8')});const field=page.locator('textarea');await field.pressSequentially('one two three');assert.equal(await field.inputValue(),'one twothree');await field.fill('one two');const blocked=await field.evaluate(e=>!e.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertText',data:' '})));assert.equal(blocked,true);const compositionAllowed=await field.evaluate(e=>e.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertText',data:' ',isComposing:true})));assert.equal(compositionAllowed,true);await field.evaluate(e=>{e.setSelectionRange(0,3);const d=new DataTransfer();d.setData('text/plain','new');e.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:d}));});assert.equal(await field.inputValue(),'new two');await field.evaluate(e=>{e.setSelectionRange(0,e.value.length);const d=new DataTransfer();d.setData('text/plain','alpha beta gamma');e.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:d}));});assert.equal(await field.inputValue(),'alpha beta');assert.equal(await field.evaluate(e=>e.checkValidity()),true);}finally{await browser.close();}});

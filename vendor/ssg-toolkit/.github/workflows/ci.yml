@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout kujo-ssg
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Checkout Kujo runtime
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: kujolang/kujo
+          path: kujo-runtime
+
+      - name: Checkout canonical Ability runtime
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: kujolang/ability
+          ref: be093e62bc93e5ec01e99e7da16c5657507ac820
+          path: kennel_packages/ability
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install WebP encoder
+        run: sudo apt-get update && sudo apt-get install -y webp
+
+      - name: Install pinned minifier without install scripts
+        run: npm ci --ignore-scripts
+
+      - name: Run repo CI checks
+        env:
+          KUJO_RUNTIME_DIR: ${{ github.workspace }}/kujo-runtime
+        run: bash scripts/run_ci_checks.sh

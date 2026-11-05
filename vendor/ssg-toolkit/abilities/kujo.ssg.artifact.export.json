@@ -1,0 +1,14 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.ssg.artifact.export",
+  "version": "1.0.0",
+  "description": "Export generated output as a deterministic uncompressed tar artifact with a checksum.",
+  "input_schema": { "type": "object", "required": ["output", "artifact"], "properties": { "output": { "type": "string", "minLength": 1, "maxLength": 1024 }, "artifact": { "type": "string", "minLength": 5, "maxLength": 1024 } }, "additionalProperties": false },
+  "output_schema": {
+    "type": "object", "required": ["operation", "artifact", "file_count", "bytes", "sha256", "details"],
+    "properties": { "operation": { "type": "string" }, "artifact": { "type": "string" }, "file_count": { "type": "integer", "minimum": 0 }, "bytes": { "type": "integer", "minimum": 0 }, "sha256": { "type": "string" }, "details": { "type": "array", "items": { "type": "string" } } },
+    "additionalProperties": false
+  },
+  "effects": [{ "kind": "read", "resource": "kujo.ssg.generated-output" }, { "kind": "write", "resource": "kujo.ssg.build-artifact" }],
+  "idempotency": { "mode": "keyed" }
+}

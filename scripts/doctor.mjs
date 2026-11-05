@@ -1,0 +1,6 @@
+import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {chromium} from 'playwright';const run=promisify(execFile);const [major,minor]=process.versions.node.split('.').map(Number);const supported=major>22 || major===22&&minor>=19;let failed=!supported;
+console.log(`Node ${process.version}: ${supported?'OK':'requires 22.19+'}`);
+for(const [name,args] of [[process.env.KUJO_BIN || 'kujo',['--version']],['zip',['-v']],['unzip',['-v']]])try{await run(name,args,{timeout:10000,maxBuffer:100000});console.log(`${name}: OK`);}catch{failed=true;console.log(`${name}: unavailable; install it or configure its documented path`);}
+try{const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL || 'chrome'});console.log(`Browser: ${browser.version()}`);await browser.close();}catch{failed=true;console.log('Browser: install Google Chrome or configure BROWSER_CHANNEL');}
+try{await run(process.env.CWEBP_BIN||'cwebp',['-version'],{timeout:10000});console.log('cwebp: OK (optional image optimization)');}catch{console.log('cwebp: unavailable; original images will be preserved');}
+console.log('Core migration, SEO and performance checks require no API keys, Codex, skills, AI Chat or Howl.');process.exitCode=failed?1:0;

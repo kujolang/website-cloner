@@ -1,0 +1,88 @@
+from src.contract import validate_ability_definition, ability_definition_digest
+from src.contracts import validate_ability_binding, validate_ability_exposure
+from src.internal import dict_get_or, failure
+
+func registry_key(ability_id, ability_version) { return ability_id + "@" + ability_version }
+func exposure_key(ability_id, ability_version, surface) { return registry_key(ability_id, ability_version) + "#" + surface }
+
+export create_ability_registry := func() {
+    return {"schema": "kujo.ability.registry/v1", "definitions": {}, "bindings": {}, "exposures": {}}
+}
+
+export register_ability_definition := func(registry, definition) {
+    if type(registry) != "dict" || dict_get_or(registry, "schema", "") != "kujo.ability.registry/v1" { return failure("invalid_ability_registry", "A valid Ability registry is required", {}) }
+    validation := validate_ability_definition(definition)
+    if validation["ok"] == false { return validation }
+    digest_result := ability_definition_digest(definition)
+    key := registry_key(definition["id"], definition["version"])
+    definitions := dict_get_or(registry, "definitions", {})
+    if has_key(definitions, key) {
+        existing_digest := dict_get_or(definitions[key], "digest", "")
+        if existing_digest != digest_result["digest"] { return failure("ability_definition_collision", "Ability ID and version already identify a different definition", {"ability_id": definition["id"], "ability_version": definition["version"]}) }
+        return {"ok": true, "registry": registry, "registered": false, "digest": existing_digest}
+    }
+    definitions[key] := {"definition": definition, "digest": digest_result["digest"]}
+    registry["definitions"] := definitions
+    return {"ok": true, "registry": registry, "registered": true, "digest": digest_result["digest"]}
+}
+
+export register_ability_binding := func(registry, binding) {
+    validation := validate_ability_binding(binding)
+    if validation["ok"] == false { return validation }
+    key := registry_key(binding["ability_id"], binding["ability_version"])
+    definitions := dict_get_or(registry, "definitions", {})
+    if has_key(definitions, key) == 0 { return failure("ability_definition_not_found", "Binding requires an exact registered Ability definition", {"ability_id": binding["ability_id"], "ability_version": binding["ability_version"]}) }
+    bindings := dict_get_or(registry, "bindings", {})
+    if has_key(bindings, key) { return failure("ability_binding_collision", "Ability ID and version already have a binding", {"ability_id": binding["ability_id"], "ability_version": binding["ability_version"]}) }
+    bindings[key] := binding
+    registry["bindings"] := bindings
+    return {"ok": true, "registry": registry}
+}
+
+export register_ability_exposure := func(registry, exposure) {
+    validation := validate_ability_exposure(exposure)
+    if validation["ok"] == false { return validation }
+    definition_key := registry_key(exposure["ability_id"], exposure["ability_version"])
+    definitions := dict_get_or(registry, "definitions", {})
+    if has_key(definitions, definition_key) == 0 { return failure("ability_definition_not_found", "Exposure requires an exact registered Ability definition", {"ability_id": exposure["ability_id"], "ability_version": exposure["ability_version"]}) }
+    key := exposure_key(exposure["ability_id"], exposure["ability_version"], exposure["surface"])
+    exposures := dict_get_or(registry, "exposures", {})
+    if has_key(exposures, key) { return failure("ability_exposure_collision", "Ability ID, version, and surface already have an exposure", {"ability_id": exposure["ability_id"], "ability_version": exposure["ability_version"], "surface": exposure["surface"]}) }
+    exposures[key] := exposure
+    registry["exposures"] := exposures
+    return {"ok": true, "registry": registry}
+}
+
+export resolve_ability := func(registry, ability_id, ability_version, surface) {
+    key := registry_key(ability_id, ability_version)
+    definitions := dict_get_or(registry, "definitions", {})
+    if has_key(definitions, key) == 0 { return failure("ability_definition_not_found", "Exact Ability ID and version are not registered", {"ability_id": ability_id, "ability_version": ability_version}) }
+    bindings := dict_get_or(registry, "bindings", {})
+    if has_key(bindings, key) == 0 { return failure("ability_binding_not_found", "Exact Ability ID and version have no handler binding", {"ability_id": ability_id, "ability_version": ability_version}) }
+    surface_key := exposure_key(ability_id, ability_version, surface)
+    exposures := dict_get_or(registry, "exposures", {})
+    if has_key(exposures, surface_key) == 0 { return failure("ability_not_exposed", "Ability is not exposed on the requested surface", {"ability_id": ability_id, "ability_version": ability_version, "surface": surface}) }
+    exposure := exposures[surface_key]
+    if dict_get_or(exposure, "enabled", false) != true { return failure("ability_exposure_disabled", "Ability exposure is disabled", {"ability_id": ability_id, "ability_version": ability_version, "surface": surface}) }
+    entry := definitions[key]
+    return {"ok": true, "definition": entry["definition"], "definition_digest": entry["digest"], "binding": bindings[key], "exposure": exposure}
+}
+
+export list_ability_definitions := func(registry, surface) {
+    definitions := dict_get_or(registry, "definitions", {})
+    exposures := dict_get_or(registry, "exposures", {})
+    result := []
+    for key in sort(keys(definitions)) {
+        entry := definitions[key]
+        definition := entry["definition"]
+        if surface == "" {
+            result = push(result, {"definition": definition, "digest": entry["digest"]})
+        } else {
+            surface_key := exposure_key(definition["id"], definition["version"], surface)
+            if has_key(exposures, surface_key) == 1 {
+                if dict_get_or(exposures[surface_key], "enabled", false) == true { result = push(result, {"definition": definition, "digest": entry["digest"], "exposure": exposures[surface_key]}) }
+            }
+        }
+    }
+    return result
+}

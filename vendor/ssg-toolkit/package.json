@@ -1,0 +1,8 @@
+{
+  "name": "kujo-ssg-build-tools",
+  "private": true,
+  "description": "Pinned parser-based CSS and JavaScript minifier for Kujo SSG",
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

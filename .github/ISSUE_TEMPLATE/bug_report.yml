@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a problem installing, cloning, editing or publishing.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Please remove API keys, cookies, personal information and private site content from anything you share. Never attach your .env file or an entire build ZIP."
+  - type: input
+    id: version
+    attributes:
+      label: Cloner version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and browser
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Capture and AI mode
+      options:
+        - Standard capture, no AI
+        - Browser-assisted capture, no AI
+        - AI review enabled
+        - Installation or another issue
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include a public source URL only if you have permission to share it. A small synthetic example is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Error message or redacted screenshot
+      description: Share the smallest useful example. Quality findings help; credentials and full reports containing private content do not.

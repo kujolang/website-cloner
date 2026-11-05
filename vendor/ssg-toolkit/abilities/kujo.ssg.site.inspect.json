@@ -1,0 +1,20 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.ssg.site.inspect",
+  "version": "1.0.0",
+  "description": "Inspect an SSG project and its configured content and output paths.",
+  "input_schema": { "type": "object", "properties": {}, "additionalProperties": false },
+  "output_schema": {
+    "type": "object",
+    "required": ["version", "configuration", "content_exists", "output_exists"],
+    "properties": {
+      "version": { "type": "string" },
+      "configuration": { "type": "string" },
+      "content_exists": { "type": "boolean" },
+      "output_exists": { "type": "boolean" }
+    },
+    "additionalProperties": false
+  },
+  "effects": [{ "kind": "read", "resource": "kujo.ssg.project" }],
+  "idempotency": { "mode": "intrinsic" }
+}

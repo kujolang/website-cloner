@@ -1,0 +1,35 @@
+[package]
+name = "ssg"
+version = "1.2.0"
+description = "Deterministic static-site generation and Ability pack for Kujo."
+license = "MIT"
+authors = ["Kujolang <contact@kujolang.ai>"]
+repository = "https://github.com/kujolang/ssg"
+readme = "README.md"
+
+[package.status]
+stage = "production"
+stability = "stable"
+public_api = true
+notes = "Stable SSG build surface with a preview local Ability pack adapter."
+
+[kujo]
+minimum_version = "1.2.0"
+entry = "build.kujo"
+sources = ["."]
+includes = ["README.md", "package.json", "package-lock.json", "abilities", "assets", "content", "docs", "scripts", "templates"]
+excludes = [".git", "kennel_packages", "output", "tmp", "node_modules"]
+
+[dependencies.ability]
+source = "github:kujolang/ability"
+commit = "be093e62bc93e5ec01e99e7da16c5657507ac820"
+
+[dev-dependencies]
+
+[scripts]
+test = "bash scripts/run_ci_checks.sh"
+ability-test = "kujo run tests/ability_pack_tests.kujo --interpreter"
+
+[package.exports]
+build = "build.kujo"
+ability_pack = "abilities/runtime.kujo"

@@ -1,0 +1,23 @@
+<main class="container max-w-5xl m-auto py-10 px-4" id="main-content">
+	<article class="product-shell">
+		<div class="product-grid">
+			<div class="product-media">
+				{{featured_image_html}}
+			</div>
+			<div class="product-summary">
+				<p class="product-kicker">Product Detail</p>
+				<h1 class="product-title">{{title}}</h1>
+				<p class="product-meta"><span>{{date}}</span> &middot; <span>{{author}}</span></p>
+				<div class="category-row">{{categories_html}}</div>
+				<div class="tag-row">{{tags_html}}</div>
+				<div class="color-row">
+					<p class="color-row-label">Available Colors</p>
+					<div class="color-row-values">{{colors_html}}</div>
+				</div>
+			</div>
+		</div>
+		<section class="product-body kujo-content">
+			{{body}}
+		</section>
+	</article>
+</main>

@@ -1,0 +1,14 @@
+{
+  "schema": "kujo.ability/v1",
+  "id": "kujo.ssg.content.list",
+  "version": "1.0.0",
+  "description": "List bounded source content records without returning their bodies.",
+  "input_schema": { "type": "object", "properties": {}, "additionalProperties": false },
+  "output_schema": {
+    "type": "object", "required": ["operation", "count", "details"],
+    "properties": { "operation": { "type": "string" }, "count": { "type": "integer", "minimum": 0 }, "details": { "type": "array", "maxItems": 200, "items": { "type": "object" } } },
+    "additionalProperties": false
+  },
+  "effects": [{ "kind": "read", "resource": "kujo.ssg.source-content" }],
+  "idempotency": { "mode": "intrinsic" }
+}

@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';import {mkdtemp,cp,readFile,writeFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import path from 'node:path';import {chromium} from 'playwright';import {parseContent,YAML} from '../../scripts/source-project.mjs';import {run} from '../../engine/pipeline.mjs';import {serveStatic} from '../../engine/static.mjs';
+const root=path.resolve(process.argv[2]||'artifacts/platform/essential-search'),temp=await mkdtemp(path.join(tmpdir(),'gallery-search-authoring-'));let browser,server;
+try{
+ await cp(path.join(root,'project'),temp,{recursive:true});const file=path.join(temp,'content/pages/search-gallery.md'),parsed=parseContent(await readFile(file,'utf8'),file);assert.ok(parsed.body.includes('Lamp'));
+ await writeFile(file,'---\n'+YAML.stringify(parsed.meta)+'---\n'+parsed.body.replaceAll('Lamp','Updated lamp'));await run(process.execPath,['scripts/build.mjs'],{cwd:temp,timeout:120000});server=await serveStatic(path.join(temp,'output'));browser=await chromium.launch({channel:'chrome'});
+ for(const width of [1440,390]){
+  const page=await browser.newPage({viewport:{width,height:1000},reducedMotion:'reduce'});let requests=0;await page.route('**/*',r=>{requests++;return ['GET','HEAD'].includes(r.request().method())&&new URL(r.request().url()).origin===server.url?r.continue():r.abort();});await page.goto(server.url+'/search-gallery/',{waitUntil:'networkidle'});
+  const input=page.locator('[data-migration-filter-search]');assert.equal(await input.isEnabled(),true);await input.fill('Updated lamp');const items=page.locator('[data-migration-filter-item]');assert.equal(await items.evaluateAll(es=>es.filter(e=>!e.hidden).length),1);assert.match(await items.filter({hasText:'Updated lamp'}).innerText(),/Updated lamp/);
+  const before=requests;await input.press('Enter');await page.waitForTimeout(100);assert.equal(requests,before);await input.fill('nothing-matches');assert.equal(await page.locator('[data-migration-filter-empty]').isVisible(),true);await input.fill('');assert.equal(await items.evaluateAll(es=>es.filter(e=>!e.hidden).length),4);await page.close();
+ }
+ const result={titleMarkdownEdit:true,searchUsesEditedContent:true,submitDoesNotNavigate:true,emptyAndReset:true,viewports:[1440,390],aiCalls:0};await writeFile(path.join(root,'search-authoring-check.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+}finally{await browser?.close();await server?.close();await rm(temp,{recursive:true,force:true});}

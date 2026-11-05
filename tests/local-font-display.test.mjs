@@ -1,0 +1,11 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {headingCSS} from '../engine/semantic-css.mjs';import {chromium} from 'playwright';import {readFile} from 'node:fs/promises';
+test('localized font deadlines cannot permanently suppress the original face',()=>{
+ for(const policy of ['fallback','optional']){const source=`@font-face{font-family:Brand;src:url("../media/a.woff2") format('woff2');font-weight:200 800;font-display:${policy}}`;const actual=headingCSS(source);assert.match(actual,/font-display:swap/);assert.match(actual,/font-weight:200 800/);assert.match(actual,/src:url\("\.\.\/media\/a.woff2"\)/);}
+ for(const src of ['url(https://example.test/a.woff2)','local(Brand)','url(../icons/a.svg)'])assert.match(headingCSS(`@font-face{src:${src};font-display:optional}`),/font-display:optional/);
+ for(const policy of ['block','swap','auto'])assert.match(headingCSS(`@font-face{src:url(../media/a.woff2);font-display:${policy}}`),new RegExp('font-display:'+policy));
+});
+test('delayed localized font replaces fallback after the source optional deadline',async()=>{
+ const font=await readFile(new URL('../vendor/ssg-toolkit/assets/fonts/inter-latin-400.woff2',import.meta.url));
+ let release;const pending=new Promise(r=>release=r);
+ const browser=await chromium.launch({channel:'chrome'});try{const page=await browser.newPage();await page.route('https://fixture.test/**',async route=>{if(route.request().url().endsWith('.woff2')){await pending;return route.fulfill({contentType:'font/woff2',body:font});}return route.fulfill({contentType:'text/html',body:'<!doctype html><style>'+headingCSS('@font-face{font-family:Proof;src:url(../media/proof.woff2);font-display:optional}span{font:32px Proof,serif}')+'</style><span>iiiiiiiiWW</span>'});});await page.goto('https://fixture.test/page/',{waitUntil:'domcontentloaded'});const before=await page.locator('span').boundingBox();await new Promise(r=>setTimeout(r,1500));release();await page.evaluate(()=>document.fonts.ready);const after=await page.locator('span').boundingBox();assert.notEqual(after.width,before.width);assert.equal(await page.evaluate(()=>document.fonts.check('32px Proof')),true);}finally{release();await browser.close();}
+});

@@ -1,0 +1,63 @@
+{
+  "starting_ssg_sha": "5ac04da58c87c58cb11a7ec9d24a650d9955e546",
+  "runtime": "Kujo 1.5.0 VM",
+  "minifier": "esbuild 0.28.2, whitespace-only, neutral platform",
+  "comparison": "Replacing only changed minified assets with baseline bytes recreates every old frozen fingerprint; all other file paths and bytes are identical.",
+  "variants": {
+    "normal": {
+      "before": "files=82 bytes=7418445 sha256=561f8331b65cdcef5563935c788ca6044d59ecba4a77674fe8cb33bc1e2cf1c3",
+      "after": "files=82 bytes=7418339 sha256=c84a8592c85d84cf49fec490168d16cac39399277c605b9ed43079631178032e",
+      "changed_files": [
+        "assets/css/style.min.css",
+        "assets/css/fonts.min.css",
+        "assets/js/docs.min.js"
+      ]
+    },
+    "minified": {
+      "before": "files=82 bytes=7418445 sha256=561f8331b65cdcef5563935c788ca6044d59ecba4a77674fe8cb33bc1e2cf1c3",
+      "after": "files=82 bytes=7418339 sha256=c84a8592c85d84cf49fec490168d16cac39399277c605b9ed43079631178032e",
+      "changed_files": [
+        "assets/css/style.min.css",
+        "assets/css/fonts.min.css",
+        "assets/js/docs.min.js"
+      ]
+    },
+    "no-aux": {
+      "before": "files=78 bytes=7408770 sha256=9d2fa6b34697c0aa87abcc32eef2962d5ad66b408945368ff36b1974bc2e3578",
+      "after": "files=78 bytes=7408664 sha256=53a8b8bb555288e1dece5c2761f57d08df505a9bb2e6632acaa3108a383b6ac0",
+      "changed_files": [
+        "assets/css/style.min.css",
+        "assets/css/fonts.min.css",
+        "assets/js/docs.min.js"
+      ]
+    },
+    "no-index": {
+      "before": "files=75 bytes=7363194 sha256=35e887dae71b17d102fb3eea8f05cb32cc326c0ce864f0cffa5a0d37183e9b84",
+      "after": "files=75 bytes=7363088 sha256=5ae7f89c0a19566f37527984e0f519b2ebfa31b85a7be32e4885d506b6ff909f",
+      "changed_files": [
+        "assets/css/style.min.css",
+        "assets/css/fonts.min.css",
+        "assets/js/docs.min.js"
+      ]
+    },
+    "posts-root": {
+      "before": "files=82 bytes=7417681 sha256=7377e75048675a1088ebef235a20653f0859898ff1469b4b7defc23474b80e85",
+      "after": "files=82 bytes=7417575 sha256=24d945367fb4c6911ef349ca9e99ba28e466d99c03d848aea67c9fef98cacfdc",
+      "changed_files": [
+        "assets/css/style.min.css",
+        "assets/css/fonts.min.css",
+        "assets/js/docs.min.js"
+      ]
+    },
+    "parallel": {
+      "before": "files=82 bytes=7418445 sha256=78dff9a832a2c282753f5843946075a590899cd5a327ab420ddabd024e89b8a3",
+      "after": "files=82 bytes=7418339 sha256=f83172cac9d6d4183ddd237daed2636adf3f8efdfa16be5379b57ced42c20bd2",
+      "changed_files": [
+        "assets/css/style.min.css",
+        "assets/css/fonts.min.css",
+        "assets/js/docs.min.js"
+      ]
+    }
+  },
+  "timing_claim": "None; validation ran on a concurrent host and some completed builds were reused after disk exhaustion."
+}

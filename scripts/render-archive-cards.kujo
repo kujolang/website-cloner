@@ -1,0 +1,6 @@
+records := parse_json(read_file(".archive-input.json"))
+cards := {}
+for record in records {
+ cards[record["slug"]] = render_listing_card(record["route"], record["title"], record["excerpt"], record["image"], record["tags"], "Read More")
+}
+write_file(".archive-cards.json", to_json(cards))

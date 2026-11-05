@@ -1,0 +1,265 @@
+from src.contract import validate_ability_value
+from src.contracts import validate_ability_invocation, validate_ability_policy_decision, validate_ability_approval, validate_ability_receipt, ABILITY_RECEIPT_SCHEMA_ID
+from src.internal import dict_get_or, failure, json_digest
+from src.registry import resolve_ability
+
+func service_function(services, name) {
+    value := dict_get_or(services, name, null)
+    if type(value) == "function" { return value }
+    return null
+}
+
+func clock_ms(services) {
+    clock := service_function(services, "clock_ms")
+    if type(clock) == "function" {
+        value := null
+        clock_error := null
+        try { value = clock() } except e { value = null; clock_error = e }
+        if type(clock_error) == "null" && type(value) == "int" && value >= 0 { return value }
+    }
+    return current_timestamp()
+}
+
+func next_id(services, kind, invocation) {
+    factory := service_function(services, "id_factory")
+    if type(factory) == "function" {
+        value := null
+        factory_error := null
+        try { value = factory(kind, invocation) } except e { value = null; factory_error = e }
+        if type(factory_error) == "null" && type(value) == "string" && len(trim(value)) > 0 && len(value) <= 240 { return value }
+    }
+    return kind + "-" + substring(sha256(kind + ":" + dict_get_or(invocation, "invocation_id", "") + ":" + to_string(current_timestamp())), 0, 24)
+}
+
+func normalized_invocation(invocation, definition_digest) {
+    result := {}
+    for key in keys(invocation) { result[key] := invocation[key] }
+    result["definition_digest"] := definition_digest
+    if has_key(result, "approval") == 0 { result["approval"] := {} }
+    if has_key(result, "metadata") == 0 { result["metadata"] := {} }
+    if has_key(result, "idempotency_key") == 0 { result["idempotency_key"] := "" }
+    return result
+}
+
+func make_receipt(services, invocation, resolved, decision, status, result, error_value, started_at_ms, completed_at_ms, idempotency, audit, approval_id) {
+    binding := resolved["binding"]
+    receipt := {
+        "schema": ABILITY_RECEIPT_SCHEMA_ID,
+        "receipt_id": next_id(services, "receipt", invocation),
+        "invocation_id": invocation["invocation_id"],
+        "ability_id": invocation["ability_id"],
+        "ability_version": invocation["ability_version"],
+        "definition_digest": resolved["definition_digest"],
+        "handler_id": binding["handler_id"],
+        "handler_version": binding["handler_version"],
+        "status": status,
+        "result": result,
+        "error": error_value,
+        "policy_decision": decision,
+        "approval_id": approval_id,
+        "idempotency": idempotency,
+        "request_id": invocation["request_id"],
+        "trace_id": invocation["trace_id"],
+        "surface": invocation["surface"],
+        "principal": invocation["principal"],
+        "started_at_ms": started_at_ms,
+        "completed_at_ms": completed_at_ms,
+        "duration_ms": completed_at_ms - started_at_ms,
+        "audit": audit,
+        "metadata": {}
+    }
+    validation := validate_ability_receipt(receipt)
+    if validation["ok"] == false { return {"ok": false, "code": "invalid_generated_ability_receipt", "message": "Runtime generated an invalid Ability receipt", "details": validation} }
+    return {"ok": status == "succeeded", "receipt": receipt, "code": dict_get_or(error_value, "code", "")}
+}
+
+func audit_event(services, phase, invocation, payload) {
+    audit_writer := service_function(services, "audit")
+    required := dict_get_or(services, "audit_required", true)
+    if type(audit_writer) != "function" {
+        if required != false { return failure("ability_audit_unavailable", "Required Ability audit writer is unavailable", {"phase": phase}) }
+        return {"ok": true, "written": false, "phase": phase}
+    }
+    audit_result := null
+    audit_error := null
+    try { audit_result = audit_writer(phase, invocation, payload) } except e { audit_result = null; audit_error = e }
+    if type(audit_error) != "null" { return failure("ability_audit_failed", "Ability audit writer failed", {"phase": phase}) }
+    if type(audit_result) != "dict" || dict_get_or(audit_result, "ok", false) != true { return failure("ability_audit_failed", "Ability audit writer rejected the event", {"phase": phase}) }
+    return audit_result
+}
+
+func terminal_receipt(services, invocation, resolved, decision, status_input, result_value, error_input, started_at_ms, completed_at_ms, idempotency, preflight_audit, approval_id) {
+    provisional := make_receipt(services, invocation, resolved, decision, status_input, result_value, error_input, started_at_ms, completed_at_ms, idempotency, preflight_audit, approval_id)
+    if has_key(provisional, "receipt") == 0 { return provisional }
+    final_audit := audit_event(services, "completed", invocation, provisional["receipt"])
+    status := status_input
+    error_value := error_input
+    if final_audit["ok"] == false && dict_get_or(services, "audit_failure_mode", "closed") != "open" {
+        status = "failed"
+        error_value = {"code": "ability_audit_failed_after_execution", "message": "Ability outcome completed but required audit persistence failed", "details": {"execution_status": provisional["receipt"]["status"]}}
+    }
+    return make_receipt(services, invocation, resolved, decision, status, result_value, error_value, started_at_ms, completed_at_ms, idempotency, final_audit, approval_id)
+}
+
+func early_failure_receipt(services, invocation, resolved, decision, status, code, message, details, started_at_ms, idempotency, audit) {
+    completed_at_ms := clock_ms(services)
+    error_value := {"code": code, "message": message, "details": details}
+    return terminal_receipt(services, invocation, resolved, decision, status, null, error_value, started_at_ms, completed_at_ms, idempotency, audit, "")
+}
+
+func validate_replay_receipt(receipt, invocation, resolved) {
+    validation := validate_ability_receipt(receipt)
+    if validation["ok"] == false { return failure("ability_idempotency_replay_invalid", "Idempotency store returned an invalid receipt", {"validation": validation}) }
+    if receipt["ability_id"] != invocation["ability_id"] || receipt["ability_version"] != invocation["ability_version"] || receipt["definition_digest"] != resolved["definition_digest"] {
+        return failure("ability_idempotency_replay_mismatch", "Idempotency receipt does not match the resolved Ability", {})
+    }
+    if json_digest(receipt["principal"]) != json_digest(invocation["principal"]) || receipt["surface"] != invocation["surface"] {
+        return failure("ability_idempotency_replay_mismatch", "Idempotency receipt does not match the invocation principal or surface", {})
+    }
+    if receipt["status"] == "succeeded" {
+        output_validation := validate_ability_value(receipt["result"], resolved["definition"]["output_schema"], "output")
+        if output_validation["ok"] == false { return failure("ability_idempotency_replay_invalid", "Idempotency receipt contains invalid output", {"validation": output_validation}) }
+    }
+    return {"ok": true}
+}
+
+func finalize_execution(services, invocation, resolved, decision, status_input, result_value, error_input, started_at_ms, completed_at_ms, idempotency, preflight_audit, approval_id) {
+    idempotency["state"] := "completed"
+    receipt_result := terminal_receipt(services, invocation, resolved, decision, status_input, result_value, error_input, started_at_ms, completed_at_ms, idempotency, preflight_audit, approval_id)
+    if has_key(receipt_result, "receipt") == 0 { return receipt_result }
+    if idempotency["mode"] == "keyed" {
+        complete_idempotency := service_function(services, "complete_idempotency")
+        completion := null
+        completion_error := null
+        try { completion = complete_idempotency(idempotency["key_digest"], idempotency["request_digest"], receipt_result["receipt"]) } except e { completion = null; completion_error = e }
+        if type(completion_error) != "null" || type(completion) != "dict" || dict_get_or(completion, "ok", false) != true {
+            commit_idempotency := {"mode": "keyed", "state": "commit_failed", "key_digest": idempotency["key_digest"], "request_digest": idempotency["request_digest"]}
+            commit_error := {"code": "ability_idempotency_commit_failed", "message": "Ability receipt could not be committed to the idempotency store", "details": {"execution_status": receipt_result["receipt"]["status"], "attempted_receipt_id": receipt_result["receipt"]["receipt_id"]}}
+            return make_receipt(services, invocation, resolved, decision, "failed", receipt_result["receipt"]["result"], commit_error, started_at_ms, completed_at_ms, commit_idempotency, receipt_result["receipt"]["audit"], approval_id)
+        }
+    }
+    return receipt_result
+}
+
+export execute_ability := func(registry, invocation_input, services_input) {
+    services := services_input
+    if type(services) != "dict" { services = {} }
+    invocation_validation := validate_ability_invocation(invocation_input)
+    if invocation_validation["ok"] == false { return invocation_validation }
+    resolved := resolve_ability(registry, invocation_input["ability_id"], invocation_input["ability_version"], invocation_input["surface"])
+    if resolved["ok"] == false { return resolved }
+    invocation := normalized_invocation(invocation_input, resolved["definition_digest"])
+    requested_digest := dict_get_or(invocation_input, "definition_digest", "")
+    if requested_digest != "" && requested_digest != resolved["definition_digest"] { return failure("ability_definition_digest_mismatch", "Invocation definition digest does not match the resolved definition", {"requested": requested_digest, "resolved": resolved["definition_digest"]}) }
+    started_at_ms := clock_ms(services)
+    preflight_audit := audit_event(services, "preflight", invocation, {"definition_digest": resolved["definition_digest"]})
+    if preflight_audit["ok"] == false { return preflight_audit }
+    policy := service_function(services, "policy")
+    if type(policy) != "function" { return failure("ability_policy_unavailable", "Ability execution denies by default without a policy evaluator", {}) }
+    decision := null
+    policy_error := null
+    try { decision = policy(resolved["definition"], invocation, resolved["exposure"]) } except e { decision = null; policy_error = e }
+    if type(policy_error) != "null" { return failure("ability_policy_failed", "Ability policy evaluation failed", {}) }
+    decision_validation := validate_ability_policy_decision(decision)
+    if decision_validation["ok"] == false { return decision_validation }
+    if decision["outcome"] == "deny" {
+        return early_failure_receipt(services, invocation, resolved, decision, "rejected", "ability_forbidden", decision["reason"], {}, started_at_ms, {"mode": resolved["definition"]["idempotency"]["mode"], "state": "not_started"}, preflight_audit)
+    }
+    input_validation := validate_ability_value(invocation["input"], resolved["definition"]["input_schema"], "input")
+    if input_validation["ok"] == false { return early_failure_receipt(services, invocation, resolved, decision, "rejected", input_validation["code"], input_validation["message"], input_validation["details"], started_at_ms, {"mode": resolved["definition"]["idempotency"]["mode"], "state": "not_started"}, preflight_audit) }
+    mode := resolved["definition"]["idempotency"]["mode"]
+    idempotency := {"mode": mode, "state": "not_applicable", "key_digest": "", "request_digest": ""}
+    begin_idempotency := service_function(services, "begin_idempotency")
+    idempotency_key := dict_get_or(invocation, "idempotency_key", "")
+    approval_id := ""
+    approval := {}
+    consume_approval := null
+    if decision["outcome"] == "approval_required" {
+        approval = dict_get_or(invocation, "approval", {})
+        if len(keys(approval)) == 0 {
+            return early_failure_receipt(services, invocation, resolved, decision, "approval_required", "ability_approval_required", decision["reason"], {"requirements": decision["requirements"]}, started_at_ms, {"mode": mode, "state": "not_started"}, preflight_audit)
+        }
+        approval_validation := validate_ability_approval(approval, invocation, clock_ms(services))
+        if approval_validation["ok"] == false { return early_failure_receipt(services, invocation, resolved, decision, "rejected", approval_validation["code"], approval_validation["message"], approval_validation["details"], started_at_ms, {"mode": mode, "state": "not_started"}, preflight_audit) }
+        consume_approval = service_function(services, "consume_approval")
+        if type(consume_approval) != "function" { return early_failure_receipt(services, invocation, resolved, decision, "failed", "ability_approval_store_unavailable", "Approval-required execution needs a one-time approval store", {}, started_at_ms, {"mode": mode, "state": "not_started"}, preflight_audit) }
+    }
+    if mode == "keyed" && idempotency_key == "" { return early_failure_receipt(services, invocation, resolved, decision, "rejected", "ability_idempotency_key_required", "This Ability requires an idempotency key", {}, started_at_ms, idempotency, preflight_audit) }
+    if mode == "keyed" && type(begin_idempotency) != "function" { return early_failure_receipt(services, invocation, resolved, decision, "failed", "ability_idempotency_store_unavailable", "Keyed Ability execution requires an idempotency store", {}, started_at_ms, idempotency, preflight_audit) }
+    if mode == "keyed" && type(service_function(services, "complete_idempotency")) != "function" { return early_failure_receipt(services, invocation, resolved, decision, "failed", "ability_idempotency_store_unavailable", "Keyed Ability completion requires an idempotency store", {}, started_at_ms, idempotency, preflight_audit) }
+    if mode == "keyed" {
+        request_digest := json_digest({"ability_id": invocation["ability_id"], "ability_version": invocation["ability_version"], "definition_digest": resolved["definition_digest"], "input": invocation["input"], "principal": invocation["principal"]})
+        key_digest := json_digest({"tenant_id": invocation["principal"]["tenant_id"], "principal_type": invocation["principal"]["type"], "principal_id": invocation["principal"]["id"], "idempotency_key": idempotency_key})
+        begin_result := null
+        begin_error := null
+        try { begin_result = begin_idempotency(key_digest, request_digest, invocation) } except e { begin_result = null; begin_error = e }
+        if type(begin_error) != "null" || type(begin_result) != "dict" { return early_failure_receipt(services, invocation, resolved, decision, "failed", "ability_idempotency_store_failed", "Idempotency store failed to begin the invocation", {}, started_at_ms, idempotency, preflight_audit) }
+        state := dict_get_or(begin_result, "state", "")
+        if state == "replay" {
+            replay_receipt := dict_get_or(begin_result, "receipt", null)
+            if type(replay_receipt) != "dict" { return early_failure_receipt(services, invocation, resolved, decision, "failed", "ability_idempotency_replay_invalid", "Idempotency replay did not contain a receipt", {}, started_at_ms, idempotency, preflight_audit) }
+            replay_validation := validate_replay_receipt(replay_receipt, invocation, resolved)
+            if replay_validation["ok"] == false { return early_failure_receipt(services, invocation, resolved, decision, "failed", replay_validation["code"], replay_validation["message"], replay_validation["details"], started_at_ms, idempotency, preflight_audit) }
+            return {"ok": replay_receipt["status"] == "succeeded", "receipt": replay_receipt, "code": dict_get_or(dict_get_or(replay_receipt, "error", {}), "code", ""), "replayed": true}
+        }
+        if state == "in_progress" { return early_failure_receipt(services, invocation, resolved, decision, "rejected", "ability_invocation_in_progress", "An equivalent invocation is already in progress", {}, started_at_ms, idempotency, preflight_audit) }
+        if state == "conflict" { return early_failure_receipt(services, invocation, resolved, decision, "rejected", "ability_idempotency_conflict", "Idempotency key was already used for different input", {}, started_at_ms, idempotency, preflight_audit) }
+        if state != "started" { return early_failure_receipt(services, invocation, resolved, decision, "failed", "ability_idempotency_store_failed", "Idempotency store did not start the invocation", {"state": state}, started_at_ms, idempotency, preflight_audit) }
+        idempotency = {"mode": mode, "state": "started", "key_digest": key_digest, "request_digest": request_digest}
+    }
+    if decision["outcome"] == "approval_required" {
+        consume_result := null
+        consume_error := null
+        try { consume_result = consume_approval(approval, invocation) } except e { consume_result = null; consume_error = e }
+        if type(consume_error) != "null" || type(consume_result) != "dict" {
+            completed_at_ms := clock_ms(services)
+            return finalize_execution(services, invocation, resolved, decision, "failed", null, {"code": "ability_approval_store_failed", "message": "Approval store failed while consuming approval", "details": {}}, started_at_ms, completed_at_ms, idempotency, preflight_audit, "")
+        }
+        if dict_get_or(consume_result, "ok", false) != true {
+            completed_at_ms := clock_ms(services)
+            return finalize_execution(services, invocation, resolved, decision, "rejected", null, {"code": "ability_approval_replayed", "message": "Approval could not be consumed exactly once", "details": {}}, started_at_ms, completed_at_ms, idempotency, preflight_audit, "")
+        }
+        approval_id = approval["approval_id"]
+    }
+    status := "succeeded"
+    result_value := null
+    error_value := null
+    cancelled := service_function(services, "cancelled")
+    cancellation_result := false
+    cancellation_error := null
+    if type(cancelled) == "function" { try { cancellation_result = cancelled(invocation) } except e { cancellation_result = false; cancellation_error = e } }
+    if type(cancellation_error) != "null" { status = "failed"; error_value = {"code": "ability_cancellation_check_failed", "message": "Ability cancellation check failed", "details": {}} }
+    if status == "succeeded" && cancellation_result == true { status = "cancelled"; error_value = {"code": "ability_cancelled", "message": "Ability invocation was cancelled before execution", "details": {}} }
+    handler_result := null
+    handler_error := null
+    if status == "succeeded" {
+        handler := resolved["binding"]["handler"]
+        context := {"invocation": invocation, "definition": resolved["definition"], "definition_digest": resolved["definition_digest"], "policy_decision": decision, "exposure": resolved["exposure"], "services": services}
+        try { handler_result = handler(invocation["input"], context) } except e { handler_result = null; handler_error = e }
+        result_value = handler_result
+    }
+    completed_at_ms := clock_ms(services)
+    duration_ms := completed_at_ms - started_at_ms
+    if type(handler_error) != "null" { status = "failed"; result_value = null; error_value = {"code": "ability_handler_failed", "message": "Ability handler failed", "details": {}} }
+    if status == "succeeded" && dict_get_or(resolved["binding"], "result_mode", "raw") == "kujo.result/v1" {
+        if type(handler_result) != "dict" || type(dict_get_or(handler_result, "ok", null)) != "bool" {
+            status = "failed"; result_value = null; error_value = {"code": "ability_handler_result_invalid", "message": "Ability handler returned an invalid kujo.result/v1 envelope", "details": {}}
+        } else {
+            if handler_result["ok"] == true {
+                result_value = dict_get_or(handler_result, "result", null)
+            } else {
+                status = "failed"; result_value = null
+                error_details := dict_get_or(handler_result, "details", {})
+                if type(error_details) != "dict" { error_details = {} }
+                if has_key(handler_result, "status") == 1 { error_details["http_status"] := handler_result["status"] }
+                error_value = {"code": to_string(dict_get_or(handler_result, "code", "ability_handler_failed")), "message": to_string(dict_get_or(handler_result, "message", "Ability handler failed")), "details": error_details}
+            }
+        }
+    }
+    if duration_ms > resolved["binding"]["timeout_ms"] { status = "timed_out"; error_value = {"code": "ability_timed_out", "message": "Ability exceeded its declared timeout", "details": {"timeout_ms": resolved["binding"]["timeout_ms"], "duration_ms": duration_ms}} }
+    if status == "succeeded" {
+        output_validation := validate_ability_value(result_value, resolved["definition"]["output_schema"], "output")
+        if output_validation["ok"] == false { status = "failed"; error_value = {"code": "ability_output_invalid", "message": "Ability handler returned output that violates its contract", "details": output_validation}; result_value = null }
+    }
+    return finalize_execution(services, invocation, resolved, decision, status, result_value, error_value, started_at_ms, completed_at_ms, idempotency, preflight_audit, approval_id)
+}
