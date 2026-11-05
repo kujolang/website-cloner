@@ -28,3 +28,7 @@ Restart and stop passed. Reinstallation retained `.env` and the exact SHA-256 of
 
 - A supported Debian/Ubuntu desktop installation, including administrator-assisted system libraries.
 - A complete fresh installation from the public download on another clean machine. The isolated macOS test above used the local source.
+
+## Public download check
+
+On November 5, anonymous requests successfully fetched the public repository, installer and source archive. The archive’s 749 files matched the clean source checkout byte-for-byte and contained no saved builds, local settings or migration evidence. This verifies public distribution; it does not replace the outstanding clean-machine Linux acceptance test.
