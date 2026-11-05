@@ -63,14 +63,14 @@ export async function repairSavedModel(model,dir,network,event=()=>{},{retryAsse
  model.pages=model.pages.map(p=>replacements.get(p.route)||p);
  // Upgrade sanitized checkpoints from saved HTML; reuse known CSS and fetch only newly discovered deferred styles.
  const presentationDir=path.join(dir,'source-html');await mkdir(presentationDir,{recursive:true});
- const upgrades=model.pages.filter(p=>p.presentationVersion!==41);
+ const upgrades=model.pages.filter(p=>p.presentationVersion!==42);
  receipt.presentation={pages:upgrades.length,restored:0,failures:[]};let next=0,done=0;
  await Promise.all(Array.from({length:Math.min(1,upgrades.length)},async()=>{
   while(next<upgrades.length){const page=upgrades[next++],file=path.join(presentationDir,hash(page.url)+'.html');
    try{let html=page.sourceHTML||originals.get(page.route)?.sourceHTML;
     if(!html)try{html=await readFile(file,'utf8');}catch(error){if(error.code!=='ENOENT')throw error;}
     if(!html){const response=await network.get(page.documentURL||page.url);if(response.status!==200)throw Error('HTTP '+response.status);html=response.body.toString();if(!/<html|<body/i.test(html))throw Error('Not HTML');await writeFile(file,html);}
-    receipt.presentation.restored+=refreshPresentation(page,html);page.presentationVersion=41;
+    receipt.presentation.restored+=refreshPresentation(page,html);page.presentationVersion=42;
     // Raw HTML remains in captured-model.json; do not duplicate it in prepared/export models.
     delete page.sourceHTML;
    }catch(error){receipt.presentation.failures.push({route:page.route,error:error.message});}

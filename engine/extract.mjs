@@ -281,7 +281,7 @@ export function extract(html, url, rest) {
     clean(main.clone().empty().prop("outerHTML") || "<main></main>"),
   );
   return {
-    presentationVersion: 41,
+    presentationVersion: 42,
     sourceSEO,
     sourceForms,
     documentAttributes: documentAttributes(html),

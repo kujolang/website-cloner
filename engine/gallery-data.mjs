@@ -2,6 +2,15 @@
 // Never execute the original widget or retain its encoded HTML in the export.
 export function captureGalleryItems($){
  const warnings=[];
+ // Hydrated Duda galleries use fixed desktop column wrappers. Preserve the
+ // desktop wrappers and card order; mobile CSS alone adapts the columns.
+ $('.dmPhotoGallery[data-desktop-columns]').each((_,node)=>{
+  const root=$(node),layout=root.children('.layout-container').first();
+  const columns=Number(root.attr('data-desktop-columns')),mobile=Number(root.attr('data-mobile-columns')||2);
+  if(!layout.length||!Number.isInteger(columns)||columns<1||columns>12||!Number.isInteger(mobile)||mobile<1||mobile>6)return;
+  const cards=layout.find('.photoGalleryThumbs');if(!cards.length)return;
+  layout.attr('data-migration-gallery-grid','true').attr('style',`--cloner-gallery-columns:${columns};--cloner-gallery-mobile-columns:${mobile}`);
+ });
  $('.eael-filter-gallery-wrapper').each((_,node)=>{
   const root=$(node),container=root.find('.eael-filter-gallery-container.eael-filter-gallery-grid,.eael-filter-gallery-container.masonry').filter((_,el)=>$(el).closest('.eael-filter-gallery-wrapper')[0]===node).first();
   const cards=container.children('.eael-filterable-gallery-item-wrap'),total=Number(container.attr('data-total-gallery-items'));

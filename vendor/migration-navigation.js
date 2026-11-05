@@ -1,5 +1,24 @@
 (()=>{
  'use strict';
+ // Duda's desktop runtime imposes a 768px canvas even on narrow screens.
+ // Scope the responsive fallback to its declared shell and gallery markup.
+ if(document.querySelector('body.dmDesktopBody #dm .dmInner')){
+  const style=document.createElement('style');style.textContent=`
+  @media(max-width:767px){body.dmDesktopBody #dm .dmInner{min-width:0!important;width:100%!important}
+  body.dmDesktopBody #dm .dmRespColsWrapper{display:flex;flex-wrap:wrap}
+  body.dmDesktopBody #dm .dmRespCol.small-12{width:100%!important;max-width:100%!important;flex:0 0 100%;float:none!important}
+  body.dmDesktopBody #hamburger-header-container,body.dmDesktopBody #hamburger-header{width:100%!important;max-width:100%!important}
+  body.dmDesktopBody #hamburger-header .dmRespColsWrapper{display:flex!important;align-items:center;flex-wrap:nowrap}
+  body.dmDesktopBody #dm #hamburger-header .dmRespCol{width:auto!important;min-width:0!important;flex:1}
+  body.dmDesktopBody #hamburger-header .empty-column{display:none!important}
+  body.dmDesktopBody #hamburger-header a[href^="tel:"],body.dmDesktopBody #hamburger-header a[href^="tel:"] *{white-space:nowrap;font-size:clamp(14px,4vw,20px)!important}
+  body.dmDesktopBody #hamburger-header .imageWidget img{max-width:80px!important;max-height:64px!important;width:auto!important;height:auto!important;object-fit:contain}
+  [data-migration-gallery-grid]{display:grid!important;grid-template-columns:repeat(var(--cloner-gallery-mobile-columns),minmax(0,1fr));gap:20px}
+  [data-migration-gallery-grid]>.photogallery-row,[data-migration-gallery-grid]>.photogallery-row>.photogallery-column{display:contents!important}
+  [data-migration-gallery-grid] .photoGalleryThumbs{width:100%!important;min-width:0!important;margin:0!important}
+  [data-migration-gallery-grid] .thumbnailInnerWrapper,[data-migration-gallery-grid] .caption-container,[data-migration-gallery-grid] .caption-inner{height:auto!important;max-height:none!important;overflow:visible!important}
+  }`;document.head.append(style);
+ }
  const focusable='a[href],button:not([disabled]),input:not([disabled]),[tabindex="0"]';
  let serial=0;
  document.querySelectorAll('nav').forEach(nav=>{
@@ -86,12 +105,12 @@
    const position=()=>{const a=arrow.getBoundingClientRect(),r=item.getBoundingClientRect();Object.assign(button.style,{left:(a.left-r.left)+'px',top:(a.top-r.top)+'px',width:a.width+'px',height:a.height+'px'});};
    if(!panel.id)panel.id='migration-classic-submenu-'+(++serial);
    button.tabIndex=0;button.setAttribute('aria-controls',panel.id);button.setAttribute('aria-label','Toggle '+item.querySelector(':scope > a').textContent.trim());
-   const set=open=>{button.setAttribute('aria-expanded',String(open));item.classList.toggle('sfHover',open);panel.classList.toggle('toggled-on',open);panel.inert=!open;panel.hidden=!open;if(open){panel.style.removeProperty('display');panel.style.visibility='visible';panel.style.opacity='1';positionButtons();}else panel.style.setProperty('display','none','important');};
-   const close=()=>set(false);set(false);disclosures.push({item,button,close,position});position();
-   button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();const open=button.getAttribute('aria-expanded')!=='true';disclosures.filter(d=>d.item!==item&&!d.item.contains(item)).forEach(d=>d.close());set(open);});
+   const set=open=>{button.setAttribute('aria-expanded',String(open));item.setAttribute('aria-expanded',String(open));item.classList.toggle('sfHover',open);panel.classList.toggle('toggled-on',open);panel.inert=!open;panel.hidden=!open;if(open){panel.style.setProperty('display',panel.classList.contains('unifiednav__container')?'flex':'block','important');panel.style.visibility='visible';panel.style.opacity='1';panel.style.pointerEvents='auto';panel.querySelectorAll('a[href]').forEach(a=>a.tabIndex=0);positionButtons();}else panel.style.setProperty('display','none','important');};
+   let hoverOpened=false;const close=()=>{hoverOpened=false;set(false);};set(false);disclosures.push({item,button,close,position});position();
+   button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();const open=hoverOpened||button.getAttribute('aria-expanded')!=='true';hoverOpened=false;disclosures.filter(d=>d.item!==item&&!d.item.contains(item)).forEach(d=>d.close());set(open);});
    button.addEventListener('keydown',event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();event.stopPropagation();button.click();}});
    item.addEventListener('keydown',event=>{if(event.key==='Escape'&&button.getAttribute('aria-expanded')==='true'){event.preventDefault();event.stopPropagation();close();button.focus();}});
-   item.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse'&&toggles.every(b=>getComputedStyle(b).display==='none')){disclosures.filter(d=>d.item!==item&&!d.item.contains(item)).forEach(d=>d.close());set(true);}});
+   item.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse'&&toggles.every(b=>getComputedStyle(b).display==='none')){disclosures.filter(d=>d.item!==item&&!d.item.contains(item)).forEach(d=>d.close());set(true);hoverOpened=true;}});
    item.addEventListener('pointerleave',event=>{if(event.pointerType==='mouse'&&!item.contains(document.activeElement))close();});
    item.addEventListener('focusout',event=>{if(!item.contains(event.relatedTarget))close();});
   });
@@ -103,7 +122,7 @@
  // Duda/Hibu drawer controls expose their target through aria-controls.
  document.querySelectorAll('button.layout-drawer-hamburger[aria-controls]').forEach(button=>{
   const panel=document.getElementById(button.getAttribute('aria-controls'));if(!panel)return;
-  const set=open=>{button.setAttribute('aria-expanded',String(open));panel.hidden=!open;panel.inert=!open;if(open){panel.style.setProperty('display','block','important');panel.style.setProperty('visibility','visible','important');panel.style.setProperty('transform','none','important');panel.style.setProperty('position','fixed');panel.style.setProperty('inset','0 auto 0 0');panel.style.setProperty('z-index','10000');panel.style.setProperty('overflow-y','auto');}else panel.style.setProperty('display','none','important');};
+  const set=open=>{button.setAttribute('aria-expanded',String(open));panel.setAttribute('aria-hidden',String(!open));panel.hidden=!open;panel.inert=!open;if(open){panel.style.setProperty('display','block','important');panel.style.setProperty('visibility','visible','important');panel.style.setProperty('transform','none','important');panel.style.setProperty('position','fixed');panel.style.setProperty('inset','0 auto 0 0');panel.style.setProperty('z-index','10000');panel.style.setProperty('overflow-y','auto');}else panel.style.setProperty('display','none','important');};
   set(false);button.addEventListener('click',()=>set(button.getAttribute('aria-expanded')!=='true'));
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&button.getAttribute('aria-expanded')==='true'){set(false);button.focus();}});
   document.addEventListener('click',event=>{if(!panel.contains(event.target)&&!button.contains(event.target))set(false);});

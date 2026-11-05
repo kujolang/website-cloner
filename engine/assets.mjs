@@ -92,7 +92,7 @@ export async function localize(model, network, dir, { stylesOnly = false, linksO
       };
       if(type==='image/jpg')type='image/jpeg';
       if(type==='image/x-png')type='image/png';
-      if(type==='application/octet-stream'||type==='application/font-sfnt'){
+      if(type==='application/octet-stream'||type==='binary/octet-stream'||type==='application/font-sfnt'){
         const signature=r.body.subarray(0,4).toString('ascii');
         if(signature==='%PDF')type='application/pdf';
         let inferred;try{inferred=imageSize(r.body).type;}catch{}

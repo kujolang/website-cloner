@@ -1,9 +1,11 @@
+import {captureHostedActions} from './hosted-actions.mjs';
 import {calendarListConfig} from '../scripts/calendar-list-config.mjs';
 import {calendarDatePattern} from '../scripts/calendar-labels.mjs';
 import {captureSmartSliders} from './slider-data.mjs';
 import {captureGalleryItems} from './gallery-data.mjs';
 // Preserve bounded declarative component data, never source executable code.
 export function captureComponentData($){
+ captureHostedActions($);
  const warnings=[...captureGalleryItems($),...captureSmartSliders($)];
  $('[data-js="tribe-events-view"]').each((_,el)=>{
   const root=$(el);for(const name of ['data-view-rest-url','data-view-rest-method','data-view-rest-nonce'])root.removeAttr(name);let data;try{data=JSON.parse(root.find('[data-js="tribe-events-view-data"]').first().text());}catch{return;}
