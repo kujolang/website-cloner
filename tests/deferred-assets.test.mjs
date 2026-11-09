@@ -15,7 +15,7 @@ test('CSS background values resolve one URL without fabricating requests for CSS
 });
 test('deferred styles restore only literal known handlers and retain genuine print styles',()=>{
  const page=extract(`<html><head><link rel="preload" as="style" href="/a.css" onload="this.onload=null;this.rel='stylesheet'"><link rel="stylesheet" href="/b.css" media="print" onload="this.media='all'"><link rel="stylesheet" href="/print.css" media="print"><link rel="preload" as="style" href="/unsafe.css" onload="steal();this.rel='stylesheet'"><link rel="preload" as="style" href="/a.css" onload="this.rel='stylesheet'"></head><body><main><h1>Hello</h1></main></body></html>`,base);
- assert.deepEqual(page.styleSources,[{url:base+'a.css',media:undefined},{url:base+'b.css',media:'all'},{url:base+'print.css',media:'print'}]);assert.equal(page.presentationVersion,41);
+ assert.deepEqual(page.styleSources,[{url:base+'a.css',media:undefined},{url:base+'b.css',media:'all'},{url:base+'print.css',media:'print'}]);assert.equal(page.presentationVersion,44);
 });
 test('unsafe deferred image values do not replace existing images',()=>{
  const $=load('<img src="/good.png" data-src="javascript:bad" data-srcset="/good.png 1x, javascript:bad 2x">');promoteDeferredAssets($,base);assert.equal($('img').attr('src'),'/good.png');assert.equal($('img').attr('srcset'),undefined);
