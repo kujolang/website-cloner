@@ -307,7 +307,11 @@ export async function localize(model, network, dir, { stylesOnly = false, linksO
           try{const file=await asset(new URL(src,p.documentURL||p.url).href);if(file&&/\.(mp4|webm)$/.test(file))node.attr('src','/'+file);else (p.videoFailures||=[]).push(src);}catch(error){if(recoverable(error))throw error;}
         }
         if($(e).is('.videobgframe')&&$(e).attr('muted')!==undefined)$(e).attr('autoplay','').attr('loop','').attr('playsinline','');
-        if(!$(e).attr('src')&&!$(e).find('source[src]').length)model.warnings.push('Video source unavailable on '+p.route+'; poster retained');
+        $(e).find('source:not([src])').remove();
+        if(!$(e).attr('src')&&!$(e).find('source[src]').length){
+          model.warnings.push('Video source unavailable on '+p.route+'; poster retained');
+          p.dynamic=[...new Set([...(p.dynamic||[]),'Video has no portable source; poster retained'])];
+        }
         if (local) $(e).attr("poster", "/" + local);
       }
       p[part] = $.html();
