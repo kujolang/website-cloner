@@ -34,4 +34,8 @@ The isolated macOS installer rehearsal downloaded Node, Kujo and Chromium into a
 
 ## Promo evidence
 
-The planned promotion combines a real app walkthrough with an original-versus-clone comparison. The walkthrough is pending browser access; it is not yet a finished release artifact. Its comparison is the November 5 GitHub demo, reviewed by Astra with no accepted CSS changes. That distinction must remain visible in the video and supporting material.
+The promotion combines real Brave app captures, an original-versus-clone scrolling comparison, an exported Markdown excerpt, and the GitHub Pages and Cloudflare Pages connection panels. The walkthrough uses edited still captures; continuous native screen recording was unavailable. Time cuts are labelled. A fresh nine-route local fixture clone completed in 5 minutes 9 seconds with zero AI calls, and its review notice remains visible. No new site was published for the filming.
+
+The comparison is the November 5 GitHub demo, reviewed by Astra with no accepted CSS changes. That distinction remains visible. Narration uses ElevenLabs v4. Captures, voice receipts, editable production files and renders stay outside the public source archive under ignored local work files.
+
+The 66-second 1080p/30 H.264/AAC export and smaller 480p copy passed full-file decoding. The composition passed runtime, layout, contrast and audio checks with no errors; one reading-time advisory remains for the illustrative Markdown excerpt. Sampled decoded frames and transition sheets were inspected. The final mix measured −16.5 LUFS with a −1.5 dB true peak; this is a measurement, not a subjective listening review.
