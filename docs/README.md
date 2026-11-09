@@ -42,6 +42,7 @@ Read the [support overview](platform-support/README.md) and [current status](pla
 
 ## Development and provenance
 
+- [v0.1.1 release verification](release-v0.1.1-verification.md)
 - [Reproduce the launch demo](launch-demo.md)
 - [Report bugs and contribute](../CONTRIBUTING.md)
 - [Report a security issue](../SECURITY.md)

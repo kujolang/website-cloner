@@ -1,6 +1,6 @@
 # Website Cloner
 
-[![Version](https://img.shields.io/badge/version-0.1.0-black)](https://github.com/kujolang/website-cloner)
+[![Version](https://img.shields.io/badge/version-0.1.1-black)](https://github.com/kujolang/website-cloner)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 [![built with Kujo](https://img.shields.io/badge/built%20with-Kujo-white.svg)](https://github.com/kujolang/kujo)
 [![Status](https://img.shields.io/badge/status-local%20preview-black)](docs/distribution.md)
@@ -86,7 +86,7 @@ The build view supports **GitHub Pages** and **Cloudflare Pages**. Connect your 
 
 Progress and deployment history survive refreshes. A verified live link requires both provider completion and the public homepage serving this deployment’s unique marker. An upload alone is not enough.
 
-Tokens stay in server memory until disconnect or restart. They do not enter exports or browser storage. These connections use tokens, not OAuth. GitHub uses a dedicated publishing branch; Cloudflare uses Direct Upload through pinned Wrangler. Automated transaction tests pass, but live account uploads still need acceptance testing. See [permissions and publishing](docs/deployment.md).
+Tokens stay in server memory until disconnect or restart. They do not enter exports or browser storage. These connections use tokens, not OAuth. GitHub uses a dedicated publishing branch; Cloudflare uses Direct Upload through pinned Wrangler. Both providers have passed live account acceptance, including verified deployment URLs. See [permissions and publishing](docs/deployment.md).
 
 The builder is a local, single-user app. Public hosting needs authentication, worker isolation, quotas and separate user credentials. See [security](docs/security.md) and [distribution](docs/distribution.md).
 
