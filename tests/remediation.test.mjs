@@ -42,7 +42,7 @@ test('redirected same-site captures resolve styles against final URL while prese
 
 test('large legitimate GIF assets use an asset budget and video sources are not counted as missing images',async()=>{
  const {localize}=await import('../engine/assets.mjs');const dir=await mkdtemp(path.join(os.tmpdir(),'repair-media-'));try{
- const p=extract('<html><body><main><img src="/large.gif"><video><source src="/movie.mp4" type="video/mp4"></video></main></body></html>','https://example.org/');const m={pages:[p],media:[],warnings:[],metrics:{}};const urls=[];await localize(m,{get:async(url,options)=>{urls.push(url);assert.equal(options.maxFile,64000000);return{status:200,headers:{'content-type':'image/gif'},body:Buffer.from('GIF89a')};}},dir);assert.deepEqual(urls,['https://example.org/large.gif']);assert.equal(m.metrics.missingImages,0);
+ const p=extract('<html><body><main><img src="/large.gif"><video><source src="/movie.mp4" type="video/mp4"></video></main></body></html>','https://example.org/');const m={pages:[p],media:[],warnings:[],metrics:{}};const urls=[];await localize(m,{get:async(url,options)=>{urls.push(url);assert.equal(options.maxFile,64000000);return{status:200,headers:{'content-type':'image/gif'},body:Buffer.from('GIF89a')};}},dir);assert.deepEqual(urls,['https://example.org/large.gif','https://example.org/movie.mp4']);assert.equal(m.metrics.missingImages,0);assert.equal(p.videoFailures.length,1);assert.ok(m.warnings.some(w=>w.includes('poster retained')));
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 
@@ -142,7 +142,7 @@ test('identical failed declarations retain their own stylesheet asset identity',
 test('cached calendar settings upgrade from original HTML without requesting source pages',async()=>{
  const dir=await mkdtemp(path.join(os.tmpdir(),'calendar-settings-upgrade-'));try{
   const url='https://example.org/events/',original=extract('<html><head><title>Events</title></head><body><div role="main" data-js="tribe-events-view"><script data-js="tribe-events-view-data">{"start_of_week":"6","date_formats":{"compact":"d/m/Y"},"slug":"list","url":"https://example.org/events/","next_url":"https://example.org/events/page/2/","events":[1,2]}</script><div class="tribe-events-calendar-list"><article class="tribe-events-calendar-list__event-row">One</article><article class="tribe-events-calendar-list__event-row">Two</article></div></div></body></html>',url);original.presentationVersion=35;const saved=structuredClone(original);delete saved.sourceHTML;for(const key of ['content','shell'])saved[key]=saved[key].replace(/ data-migration-calendar-(?:week-start|compact-format|list)="[^"]*"/g,'');
-  await writeJSON(path.join(dir,'captured-model.json'),{pages:[original]});let requests=0;const unexpected=async()=>{requests++;throw Error('Unexpected source request');};const model=await repairSavedModel({source:url,pages:[saved],media:[],metrics:{},warnings:[]},dir,{get:unexpected,head:unexpected,text:unexpected});assert.equal(requests,0);assert.equal(model.pages[0].presentationVersion,41);assert.match(model.pages[0].shell+model.pages[0].content,/data-migration-calendar-list=/);assert.match(model.pages[0].shell+model.pages[0].content,/pageSize[^0-9]*2/);assert.match(model.pages[0].shell+model.pages[0].content,/data-migration-calendar-week-start="6"/);assert.match(model.pages[0].shell+model.pages[0].content,/data-migration-calendar-compact-format="dd\/MM\/yyyy"/);
+  await writeJSON(path.join(dir,'captured-model.json'),{pages:[original]});let requests=0;const unexpected=async()=>{requests++;throw Error('Unexpected source request');};const model=await repairSavedModel({source:url,pages:[saved],media:[],metrics:{},warnings:[]},dir,{get:unexpected,head:unexpected,text:unexpected});assert.equal(requests,0);assert.equal(model.pages[0].presentationVersion,44);assert.match(model.pages[0].shell+model.pages[0].content,/data-migration-calendar-list=/);assert.match(model.pages[0].shell+model.pages[0].content,/pageSize[^0-9]*2/);assert.match(model.pages[0].shell+model.pages[0].content,/data-migration-calendar-week-start="6"/);assert.match(model.pages[0].shell+model.pages[0].content,/data-migration-calendar-compact-format="dd\/MM\/yyyy"/);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 
@@ -153,7 +153,7 @@ test('saved FAQ captures upgrade content bindings without source requests',async
   const original=extract(html,url),saved={...original,presentationVersion:39,sourceSEO:{...original.sourceSEO,seo_content_bindings:[]}};delete saved.sourceHTML;
   await writeJSON(path.join(dir,'captured-model.json'),{pages:[original]});let requests=0;const reject=async()=>{requests++;throw Error('Unexpected source request');};
   const model=await repairSavedModel({source:url,pages:[saved],media:[],metrics:{},warnings:[]},dir,{get:reject,head:reject,text:reject});
-  assert.equal(requests,0);assert.equal(model.pages[0].presentationVersion,41);assert.equal(model.pages[0].sourceSEO.seo_content_bindings.length,1);assert.ok(model.pages[0].sourceSEO.seo_content_bindings[0].answer);
+  assert.equal(requests,0);assert.equal(model.pages[0].presentationVersion,44);assert.equal(model.pages[0].sourceSEO.seo_content_bindings.length,1);assert.ok(model.pages[0].sourceSEO.seo_content_bindings[0].answer);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 
@@ -164,6 +164,6 @@ test('cached HowTo steps acquire authored schema bindings without re-fetching pa
   const original=extract(html,url),saved={...original,presentationVersion:40,sourceSEO:{...original.sourceSEO,seo_content_bindings:[]}};delete saved.sourceHTML;
   await writeJSON(path.join(dir,'captured-model.json'),{pages:[original]});let requests=0;const reject=async()=>{requests++;throw Error('Unexpected source request');};
   const model=await repairSavedModel({source:url,pages:[saved],media:[],metrics:{},warnings:[]},dir,{get:reject,head:reject,text:reject});
-  assert.equal(requests,0);assert.equal(model.pages[0].presentationVersion,41);const binding=model.pages[0].sourceSEO.seo_content_bindings[0];assert.equal(binding.anchor,'step');assert.ok(binding.name);assert.ok(binding['direction-0']);
+  assert.equal(requests,0);assert.equal(model.pages[0].presentationVersion,44);const binding=model.pages[0].sourceSEO.seo_content_bindings[0];assert.equal(binding.anchor,'step');assert.ok(binding.name);assert.ok(binding['direction-0']);
  }finally{await rm(dir,{recursive:true,force:true});}
 });
